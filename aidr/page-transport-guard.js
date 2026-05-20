@@ -17,7 +17,7 @@
 
   function shouldInspect(url) {
     const u = String(url || '');
-    return /backend-api\/conversation|\/conversation/i.test(u);
+    return /backend-api\/conversation|\/conversation|\/chat\/completions|\/completions|\/generate|\/messages/i.test(u);
   }
 
   function shouldBlock(url, bodyText) {
@@ -34,7 +34,9 @@
   const origFetch = window.fetch;
   window.fetch = async function (input, init) {
     const url = (input && input.url) ? input.url : input;
-    const bodyText = extractTextFromBody(init && init.body);
+    const bodyText = extractTextFromBody(
+      (init && init.body) || (input && input.body) || ''
+    );
     if (shouldBlock(url, bodyText)) {
       emitBlocked(url);
       throw new Error('AIDR_BLOCKED_REQUEST');

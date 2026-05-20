@@ -9,16 +9,125 @@
   if (window.__tokenCounterInitialized) return;
   window.__tokenCounterInitialized = true;
 
+  const DEFAULT_PROFILE = {
+    formSelectors: [
+      'form[data-type="unified-composer"]',
+      'form:has(textarea)',
+      'form'
+    ],
+    inputSelectors: [
+      'textarea[name="prompt-textarea"]',
+      '#prompt-textarea',
+      'textarea',
+      'div[contenteditable="true"][role="textbox"]',
+      'div[contenteditable="true"]',
+      '[role="textbox"][contenteditable="true"]',
+      '[aria-label*="message" i]',
+      '[aria-label*="prompt" i]',
+      '[placeholder*="ask" i]',
+      '[placeholder*="message" i]'
+    ],
+    sendSelectors: [
+      '#composer-submit-button',
+      'button[data-testid="send-button"]',
+      'button[data-testid*="send"]',
+      'button[aria-label*="send" i]',
+      'button[type="submit"]'
+    ],
+    composerContextSelectors: [
+      'form',
+      '[role="form"]',
+      '[class*="composer"]',
+      '[class*="chat-input"]',
+      '[class*="prompt"]'
+    ]
+  };
+
+  const SITE_PROFILES = [
+    {
+      hosts: ['chatgpt.com', 'chat.openai.com'],
+      formSelectors: ['form[data-type="unified-composer"]', '#thread-bottom form'],
+      inputSelectors: ['textarea[name="prompt-textarea"]', '#prompt-textarea', 'div[contenteditable="true"]'],
+      sendSelectors: ['#composer-submit-button', 'button[data-testid="send-button"]']
+    },
+    {
+      hosts: ['claude.ai'],
+      inputSelectors: ['div[contenteditable="true"][role="textbox"]', 'textarea', '[aria-label*="Message Claude" i]'],
+      sendSelectors: ['button[aria-label*="Send" i]', 'button[type="submit"]']
+    },
+    {
+      hosts: ['gemini.google.com'],
+      inputSelectors: ['rich-textarea div[contenteditable="true"]', 'div[contenteditable="true"][role="textbox"]', 'textarea'],
+      sendSelectors: ['button[aria-label*="Send message" i]', 'button[type="submit"]']
+    },
+    {
+      hosts: ['perplexity.ai'],
+      inputSelectors: ['textarea', 'div[contenteditable="true"][role="textbox"]'],
+      sendSelectors: ['button[aria-label*="Submit" i]', 'button[aria-label*="Send" i]', 'button[type="submit"]']
+    },
+    {
+      hosts: ['poe.com'],
+      inputSelectors: ['textarea', 'div[contenteditable="true"]'],
+      sendSelectors: ['button[aria-label*="Send" i]', 'button[type="submit"]']
+    },
+    {
+      hosts: ['grok.com', 'x.com', 'twitter.com'],
+      inputSelectors: ['div[contenteditable="true"][role="textbox"]', 'textarea'],
+      sendSelectors: ['button[aria-label*="Send" i]', 'button[type="submit"]']
+    },
+    {
+      hosts: ['copilot.microsoft.com', 'bing.com'],
+      inputSelectors: ['textarea', 'div[contenteditable="true"][role="textbox"]'],
+      sendSelectors: ['button[aria-label*="Send" i]', 'button[type="submit"]']
+    }
+  ];
+
+  function hostMatches(candidate, host) {
+    return host === candidate || host.endsWith('.' + candidate);
+  }
+
+  function getSiteProfile() {
+    const host = window.location.hostname;
+    const site = SITE_PROFILES.find((p) => (p.hosts || []).some((h) => hostMatches(h, host)));
+    return {
+      formSelectors: site && site.formSelectors ? site.formSelectors : DEFAULT_PROFILE.formSelectors,
+      inputSelectors: site && site.inputSelectors ? site.inputSelectors : DEFAULT_PROFILE.inputSelectors,
+      sendSelectors: site && site.sendSelectors ? site.sendSelectors : DEFAULT_PROFILE.sendSelectors,
+      composerContextSelectors: site && site.composerContextSelectors ? site.composerContextSelectors : DEFAULT_PROFILE.composerContextSelectors
+    };
+  }
+
+  const ACTIVE_PROFILE = getSiteProfile();
+
+  function firstQuery(selectors, root) {
+    const scope = root || document;
+    for (const selector of selectors) {
+      try {
+        const found = scope.querySelector(selector);
+        if (found) return found;
+      } catch (_) {
+        // Ignore invalid selectors on older engines.
+      }
+    }
+    return null;
+  }
+
   // --------------------------
   // DOM Reading Helpers
   // --------------------------
 
   function getComposerForm(el) {
     if (el && el.closest) {
-      const fromTarget = el.closest('form[data-type="unified-composer"]');
-      if (fromTarget) return fromTarget;
+      for (const selector of ACTIVE_PROFILE.formSelectors) {
+        try {
+          const fromTarget = el.closest(selector);
+          if (fromTarget) return fromTarget;
+        } catch (_) {
+          // Ignore invalid selector for this browser.
+        }
+      }
     }
-    return document.querySelector('form[data-type="unified-composer"]');
+    return firstQuery(ACTIVE_PROFILE.formSelectors, document);
   }
 
   function getInputText(form) {
@@ -26,20 +135,20 @@
     if (!composerForm) return '';
 
     const candidates = [];
-    const promptTextarea = composerForm.querySelector(
-      'textarea[name="prompt-textarea"], #prompt-textarea'
-    );
-    if (promptTextarea && typeof promptTextarea.value === 'string') {
-      candidates.push(promptTextarea.value || '');
-    }
-
-    const editable = composerForm.querySelector('div[contenteditable="true"]');
-    if (editable) {
-      candidates.push(editable.innerText || '');
+    for (const selector of ACTIVE_PROFILE.inputSelectors) {
+      try {
+        const node = composerForm.querySelector(selector);
+        if (!node) continue;
+        if (typeof node.value === 'string') candidates.push(node.value || '');
+        if (typeof node.innerText === 'string') candidates.push(node.innerText || '');
+        if (typeof node.textContent === 'string') candidates.push(node.textContent || '');
+      } catch (_) {
+        // Ignore invalid selector.
+      }
     }
 
     const active = document.activeElement;
-    if (active && active.closest && active.closest('form[data-type="unified-composer"]')) {
+    if (active && active.closest && getComposerForm(active)) {
       if (typeof active.value === 'string') candidates.push(active.value || '');
       if (typeof active.innerText === 'string') candidates.push(active.innerText || '');
       if (typeof active.textContent === 'string') candidates.push(active.textContent || '');
@@ -392,14 +501,27 @@
 
   function isPromptElement(el) {
     if (!el) return false;
-    if (el.matches && el.matches('textarea, #prompt-textarea, [contenteditable=\"true\"]')) return true;
-    if (el.closest && el.closest('textarea, #prompt-textarea, [contenteditable=\"true\"]')) return true;
+    for (const selector of ACTIVE_PROFILE.inputSelectors) {
+      try {
+        if (el.matches && el.matches(selector)) return true;
+        if (el.closest && el.closest(selector)) return true;
+      } catch (_) {
+        // Ignore selector errors.
+      }
+    }
     return false;
   }
 
   function isComposerContext(el) {
     if (!el || !el.closest) return false;
-    return !!el.closest('form[data-type=\"unified-composer\"], #thread-bottom-container');
+    for (const selector of ACTIVE_PROFILE.composerContextSelectors.concat(ACTIVE_PROFILE.formSelectors)) {
+      try {
+        if (el.closest(selector)) return true;
+      } catch (_) {
+        // Ignore selector errors.
+      }
+    }
+    return false;
   }
 
   function promptFingerprint(text) {
@@ -494,6 +616,7 @@
     const script = document.createElement('script');
     if (!chrome || !chrome.runtime || !chrome.runtime.getURL) return;
     script.src = chrome.runtime.getURL('aidr/page-transport-guard.js');
+    script.setAttribute('data-aidr-host', window.location.hostname);
     (document.documentElement || document.head || document.body).appendChild(script);
     script.remove();
   }
@@ -536,9 +659,17 @@
 
   window.addEventListener('click', (e) => {
     if (e.defaultPrevented) return;
-    const button = e.target && e.target.closest
-      ? e.target.closest('#composer-submit-button, button[data-testid=\"send-button\"], button[data-testid*=\"send\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
-      : null;
+    let button = null;
+    if (e.target && e.target.closest) {
+      for (const selector of ACTIVE_PROFILE.sendSelectors) {
+        try {
+          button = e.target.closest(selector);
+          if (button) break;
+        } catch (_) {
+          // Ignore selector errors.
+        }
+      }
+    }
     if (!button) return;
     const form = getComposerForm(button);
     if (!form) return;

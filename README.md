@@ -14,6 +14,22 @@ AIDR (AI Detection and Response) is a Chrome extension security layer focused on
   - pre-send interception (keyboard/click/submit paths)
   - transport-layer guard for conversation requests
 - Scope currently set to all HTTP/S sites in `manifest.json`.
+- Site-adapter framework for interception selectors (hostname-based profiles) with generic fallback.
+
+## Site Coverage Model
+
+AIDR now uses hostname profiles in `content.js` for composer/input/send selector targeting.
+
+Current seeded profiles:
+- `chatgpt.com`, `chat.openai.com`
+- `claude.ai`
+- `gemini.google.com`
+- `perplexity.ai`
+- `poe.com`
+- `grok.com`, `x.com`, `twitter.com`
+- `copilot.microsoft.com`, `bing.com`
+
+All other HTTP/S domains fall back to generic selectors and transport-layer guard heuristics.
 
 ## Repository Contents
 
