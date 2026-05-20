@@ -283,6 +283,13 @@
       <div class="ctc-topics">🔑 Last: <span id="ctc-last-topics">--</span></div>
       <div class="ctc-topics">🔑 Overall: <span id="ctc-overall-topics">--</span></div>
       <div>"paynet" mentions: <span id="ctc-paynet">0</span></div>
+      <div class="ctc-topics">AIDR logging: <span id="ctc-aidr-log-state">on</span></div>
+      <div class="ctc-topics">
+        <button id="ctc-aidr-log-toggle" type="button">Toggle Log</button>
+        <button id="ctc-aidr-export-json" type="button">Export JSON</button>
+        <button id="ctc-aidr-export-csv" type="button">Export CSV</button>
+        <button id="ctc-aidr-clear" type="button">Clear Logs</button>
+      </div>
     `;
     document.body.appendChild(panel);
 
@@ -316,6 +323,60 @@
       manualModelOverride = true;
       updatePanel();
     });
+
+    const logStateEl = document.getElementById('ctc-aidr-log-state');
+    const logToggleBtn = document.getElementById('ctc-aidr-log-toggle');
+    const exportJsonBtn = document.getElementById('ctc-aidr-export-json');
+    const exportCsvBtn = document.getElementById('ctc-aidr-export-csv');
+    const clearBtn = document.getElementById('ctc-aidr-clear');
+
+    async function refreshLogState() {
+      if (!window.AIDR || !window.AIDR.logger || !logStateEl) return;
+      const enabled = await window.AIDR.logger.isLoggingEnabled();
+      logStateEl.textContent = enabled ? 'on' : 'off';
+    }
+
+    function downloadTextFile(filename, text, mime) {
+      const blob = new Blob([text], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    if (logToggleBtn) {
+      logToggleBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.logger) return;
+        const curr = await window.AIDR.logger.isLoggingEnabled();
+        await window.AIDR.logger.setLoggingEnabled(!curr);
+        await refreshLogState();
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.logger) return;
+        const text = await window.AIDR.logger.exportJson();
+        downloadTextFile('aidr-events.json', text, 'application/json');
+      });
+    }
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.logger) return;
+        const text = await window.AIDR.logger.exportCsv();
+        downloadTextFile('aidr-events.csv', text, 'text/csv');
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.logger) return;
+        await window.AIDR.logger.clearEvents();
+      });
+    }
+    refreshLogState();
   }
 
   function isPromptElement(el) {

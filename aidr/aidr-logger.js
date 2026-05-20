@@ -1,4 +1,24 @@
 (function () {
+  const ENABLED_KEY = 'aidr_logging_enabled';
+
+  function isLoggingEnabled() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([ENABLED_KEY], (res) => {
+        if (typeof res[ENABLED_KEY] !== 'boolean') {
+          resolve(true);
+          return;
+        }
+        resolve(res[ENABLED_KEY]);
+      });
+    });
+  }
+
+  function setLoggingEnabled(enabled) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [ENABLED_KEY]: Boolean(enabled) }, () => resolve());
+    });
+  }
+
   function loadEvents() {
     return new Promise((resolve) => {
       const key = window.AIDR.config.storageKey;
@@ -27,6 +47,9 @@
   }
 
   async function logEvent(eventData) {
+    const enabled = await isLoggingEnabled();
+    if (!enabled) return;
+
     const key = window.AIDR.config.storageKey;
     const old = await loadEvents();
     const cutoff = retentionCutoffMs();
@@ -42,9 +65,51 @@
     });
   }
 
+  function clearEvents() {
+    const key = window.AIDR.config.storageKey;
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [key]: [] }, () => resolve());
+    });
+  }
+
+  async function exportJson() {
+    const events = await loadEvents();
+    return JSON.stringify(events, null, 2);
+  }
+
+  async function exportCsv() {
+    const events = await loadEvents();
+    const headers = [
+      'ts',
+      'direction',
+      'risk',
+      'severity',
+      'confidence',
+      'matched_rule_ids',
+      'categories',
+      'evidence_spans'
+    ];
+    const rows = events.map((e) => ([
+      e.ts,
+      e.direction,
+      e.risk,
+      e.severity,
+      e.confidence,
+      (e.matched_rule_ids || []).join('|'),
+      (e.categories || []).join('|'),
+      (e.evidence_spans || []).join('|')
+    ]));
+    return [headers.join(','), ...rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+  }
+
   window.AIDR = window.AIDR || {};
   window.AIDR.logger = {
     loadEvents,
-    logEvent
+    logEvent,
+    clearEvents,
+    exportJson,
+    exportCsv,
+    isLoggingEnabled,
+    setLoggingEnabled
   };
 })();
