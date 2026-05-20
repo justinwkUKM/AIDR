@@ -22,6 +22,21 @@ This repository currently contains the baseline extension files and a revised im
 - Runtime metrics are also available from the content-script engine via:
   - `window.AIDR.createEngine().getPerformanceStats()`
 
+## Diagnostics Dataset Schema (Dashboard)
+
+- Upload JSON with shape:
+```json
+{
+  "samples": [
+    {
+      "predicted_categories": ["prompt_injection"],
+      "actual_categories": ["prompt_injection"]
+    }
+  ]
+}
+```
+- Dashboard computes per-category `precision`, `recall`, `f1`, and `false_positive_rate`.
+
 ## Next Steps
 
 1. Implement `v1` detection primitives and scoring from `AIDR_PLAN.md`.

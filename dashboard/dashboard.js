@@ -10,6 +10,7 @@
   const timelineEl = document.getElementById('timeline');
   const countEl = document.getElementById('event-count');
   const recomputeBtn = document.getElementById('recompute-diagnostics-btn');
+  const diagnosticsFileInput = document.getElementById('diagnostics-file-input');
   const diagnosticsMetaEl = document.getElementById('diagnostics-meta');
   const diagnosticsGridEl = document.getElementById('diagnostics-grid');
 
@@ -112,6 +113,11 @@
     return Array.from(set).sort();
   }
 
+  function ratio(num, den) {
+    if (!den) return 0;
+    return Number((num / den).toFixed(4));
+  }
+
   function buildDiagnostics(events) {
     const now = Date.now();
     const categories = categoriesFromEvents(events);
@@ -127,7 +133,7 @@
         recall: null,
         f1: null,
         false_positive_rate: null,
-        note: 'Ground-truth labels required for precision/recall/f1/fpr.'
+        note: 'Ground-truth labels required. Upload labeled dataset JSON below.'
       };
     });
 
@@ -138,6 +144,77 @@
       summary: {
         total_events: total,
         blocked_high_or_critical: blockedHighOrCritical
+      },
+      per_category: perCategory
+    };
+  }
+
+  function parseLabeledDataset(jsonText) {
+    const parsed = JSON.parse(jsonText);
+    if (!parsed || typeof parsed !== 'object') throw new Error('Dataset JSON must be an object.');
+    if (!Array.isArray(parsed.samples)) throw new Error('Dataset JSON must include a samples array.');
+    return parsed.samples.map((s, idx) => {
+      const predicted = Array.isArray(s.predicted_categories) ? s.predicted_categories.map((v) => String(v)) : [];
+      const actual = Array.isArray(s.actual_categories) ? s.actual_categories.map((v) => String(v)) : [];
+      if (!predicted.length && !actual.length) {
+        throw new Error(`Sample ${idx} must include predicted_categories or actual_categories.`);
+      }
+      return { predicted, actual };
+    });
+  }
+
+  function categoriesFromSamples(samples) {
+    const set = new Set();
+    for (const s of samples) {
+      s.predicted.forEach((c) => set.add(c));
+      s.actual.forEach((c) => set.add(c));
+    }
+    return Array.from(set).sort();
+  }
+
+  function buildDiagnosticsFromLabeledSamples(samples) {
+    const categories = categoriesFromSamples(samples);
+    const perCategory = categories.map((category) => {
+      let tp = 0;
+      let fp = 0;
+      let fn = 0;
+      let tn = 0;
+
+      for (const sample of samples) {
+        const pred = sample.predicted.includes(category);
+        const act = sample.actual.includes(category);
+        if (pred && act) tp += 1;
+        else if (pred && !act) fp += 1;
+        else if (!pred && act) fn += 1;
+        else tn += 1;
+      }
+
+      const precision = ratio(tp, tp + fp);
+      const recall = ratio(tp, tp + fn);
+      const f1 = (precision + recall) ? Number(((2 * precision * recall) / (precision + recall)).toFixed(4)) : 0;
+      const falsePositiveRate = ratio(fp, fp + tn);
+
+      return {
+        category,
+        sample_count: samples.length,
+        tp,
+        fp,
+        fn,
+        tn,
+        precision,
+        recall,
+        f1,
+        false_positive_rate: falsePositiveRate
+      };
+    });
+
+    return {
+      schema_version: 2,
+      computed_at_ts: Date.now(),
+      source: 'dashboard_labeled_dataset',
+      summary: {
+        total_samples: samples.length,
+        total_categories: categories.length
       },
       per_category: perCategory
     };
@@ -154,7 +231,7 @@
       return;
     }
 
-    diagnosticsMetaEl.textContent = `Computed: ${formatTs(diag.computed_at_ts)} | Total events: ${diag.summary.total_events}`;
+    diagnosticsMetaEl.textContent = `Computed: ${formatTs(diag.computed_at_ts)} | Source: ${diag.source}`;
     const rows = Array.isArray(diag.per_category) ? diag.per_category : [];
     if (!rows.length) {
       const empty = document.createElement('div');
@@ -168,7 +245,7 @@
       const el = document.createElement('div');
       el.className = 'diag-row';
       el.innerHTML = `
-        <div><strong>${row.category}</strong> (${row.event_count} events)</div>
+        <div><strong>${row.category}</strong> (${row.event_count || row.sample_count || 0})</div>
         <div>precision: ${row.precision ?? '--'} | recall: ${row.recall ?? '--'} | f1: ${row.f1 ?? '--'} | fpr: ${row.false_positive_rate ?? '--'}</div>
       `;
       diagnosticsGridEl.appendChild(el);
@@ -227,6 +304,20 @@
     const diagnostics = buildDiagnostics(events);
     await setDiagnostics(diagnostics);
     render();
+  });
+
+  diagnosticsFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const samples = parseLabeledDataset(text);
+      const diagnostics = buildDiagnosticsFromLabeledSamples(samples);
+      await setDiagnostics(diagnostics);
+      render();
+    } catch (err) {
+      diagnosticsMetaEl.textContent = `Dataset parse error: ${err.message}`;
+    }
   });
 
   render();

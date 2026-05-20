@@ -98,6 +98,18 @@ button:hover { border-color: var(--accent); cursor: pointer; }
   margin-bottom: 8px;
 }
 
+.diag-upload {
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.diag-upload input {
+  margin-top: 4px;
+  width: 100%;
+  font-size: 11px;
+}
+
 .diag-grid {
   display: grid;
   gap: 6px;
