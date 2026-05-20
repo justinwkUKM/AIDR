@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIDR Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <h1>AIDR Dashboard</h1>
+        <p>Timeline and filters for local risk events</p>
+      </header>
+
+      <section class="controls">
+        <label>
+          Severity
+          <select id="severity-filter">
+            <option value="all">All</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="safe">Safe</option>
+          </select>
+        </label>
+
+        <label>
+          Category
+          <select id="category-filter">
+            <option value="all">All</option>
+            <option value="sensitive_data">Sensitive Data</option>
+            <option value="prompt_injection">Prompt Injection</option>
+            <option value="jailbreak">Jailbreak</option>
+            <option value="exfiltration">Exfiltration</option>
+            <option value="harmful_content">Harmful Content</option>
+            <option value="behavioral">Behavioral</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="actions">
+        <button id="refresh-btn">Refresh</button>
+        <button id="export-json-btn">Export JSON</button>
+        <button id="export-csv-btn">Export CSV</button>
+      </section>
+
+      <section class="stats">
+        <div id="event-count">0 events</div>
+      </section>
+
+      <section class="timeline" id="timeline"></section>
+    </main>
+
+    <script src="dashboard.js"></script>
+  </body>
+</html>

@@ -8,6 +8,10 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'"
   },
+  "action": {
+    "default_title": "AIDR Dashboard",
+    "default_popup": "dashboard/dashboard.html"
+  },
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
