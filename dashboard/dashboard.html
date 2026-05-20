@@ -46,6 +46,28 @@
         <button id="export-csv-btn">Export CSV</button>
       </section>
 
+      <section class="diagnostics">
+        <div class="diag-head">
+          <h2>Policy Controls</h2>
+        </div>
+        <div class="diag-meta" id="policy-meta">mode: enforcement</div>
+        <div class="actions">
+          <button id="policy-toggle-mode-btn">Toggle Mode</button>
+          <button id="policy-pause-btn">Pause 15m</button>
+          <button id="policy-resume-btn">Resume</button>
+        </div>
+        <div class="diag-upload">
+          <label for="policy-allow-rule-input">Allowlist Rule ID</label>
+          <input id="policy-allow-rule-input" type="text" />
+          <button id="policy-allow-rule-btn">Add Rule ID</button>
+        </div>
+        <div class="diag-upload">
+          <label for="policy-allow-pattern-input">Allowlist Pattern</label>
+          <input id="policy-allow-pattern-input" type="text" />
+          <button id="policy-allow-pattern-btn">Add Pattern</button>
+        </div>
+      </section>
+
       <section class="stats">
         <div id="event-count">0 events</div>
       </section>

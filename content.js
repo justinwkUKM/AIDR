@@ -228,6 +228,9 @@
   const aidrEngine = window.AIDR && window.AIDR.createEngine
     ? window.AIDR.createEngine()
     : null;
+  if (window.AIDR && window.AIDR.policy && window.AIDR.policy.init) {
+    window.AIDR.policy.init();
+  }
   const sendRiskHistory = [];
   let bypassAllowedFingerprint = null;
   const cooldownByFingerprint = new Map();
@@ -290,6 +293,16 @@
         <button id="ctc-aidr-export-csv" type="button">Export CSV</button>
         <button id="ctc-aidr-clear" type="button">Clear Logs</button>
       </div>
+      <div class="ctc-topics">AIDR mode: <span id="ctc-aidr-mode-state">enforcement</span></div>
+      <div class="ctc-topics">
+        <button id="ctc-aidr-mode-toggle" type="button">Toggle Mode</button>
+        <button id="ctc-aidr-pause-15" type="button">Pause 15m</button>
+        <button id="ctc-aidr-resume" type="button">Resume</button>
+      </div>
+      <div class="ctc-topics">
+        <input id="ctc-aidr-mute-category" type="text" placeholder="mute category (e.g. prompt_injection)" />
+        <button id="ctc-aidr-mute-30" type="button">Mute 30m</button>
+      </div>
     `;
     document.body.appendChild(panel);
 
@@ -329,11 +342,24 @@
     const exportJsonBtn = document.getElementById('ctc-aidr-export-json');
     const exportCsvBtn = document.getElementById('ctc-aidr-export-csv');
     const clearBtn = document.getElementById('ctc-aidr-clear');
+    const modeStateEl = document.getElementById('ctc-aidr-mode-state');
+    const modeToggleBtn = document.getElementById('ctc-aidr-mode-toggle');
+    const pauseBtn = document.getElementById('ctc-aidr-pause-15');
+    const resumeBtn = document.getElementById('ctc-aidr-resume');
+    const muteCategoryInput = document.getElementById('ctc-aidr-mute-category');
+    const muteBtn = document.getElementById('ctc-aidr-mute-30');
 
     async function refreshLogState() {
       if (!window.AIDR || !window.AIDR.logger || !logStateEl) return;
       const enabled = await window.AIDR.logger.isLoggingEnabled();
       logStateEl.textContent = enabled ? 'on' : 'off';
+    }
+
+    async function refreshPolicyState() {
+      if (!window.AIDR || !window.AIDR.policy || !modeStateEl) return;
+      await window.AIDR.policy.init();
+      const st = window.AIDR.policy.getStateSync();
+      modeStateEl.textContent = st.mode + (window.AIDR.policy.isSessionPaused() ? ' (paused)' : '');
     }
 
     function downloadTextFile(filename, text, mime) {
@@ -376,7 +402,38 @@
         await window.AIDR.logger.clearEvents();
       });
     }
+    if (modeToggleBtn) {
+      modeToggleBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy) return;
+        const st = window.AIDR.policy.getStateSync();
+        await window.AIDR.policy.setMode(st.mode === 'enforcement' ? 'shadow' : 'enforcement');
+        await refreshPolicyState();
+      });
+    }
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy) return;
+        await window.AIDR.policy.pauseSession(15);
+        await refreshPolicyState();
+      });
+    }
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy) return;
+        await window.AIDR.policy.resumeSession();
+        await refreshPolicyState();
+      });
+    }
+    if (muteBtn) {
+      muteBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy || !muteCategoryInput) return;
+        const cat = String(muteCategoryInput.value || '').trim();
+        if (!cat) return;
+        await window.AIDR.policy.muteCategory(cat, 30);
+      });
+    }
     refreshLogState();
+    refreshPolicyState();
   }
 
   function isPromptElement(el) {
@@ -442,6 +499,10 @@
     }
 
     if (result.severity !== 'high' && result.severity !== 'critical') {
+      return false;
+    }
+
+    if (!window.AIDR || !window.AIDR.policy || !window.AIDR.policy.isEnforcementActive()) {
       return false;
     }
 

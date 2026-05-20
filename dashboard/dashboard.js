@@ -1,6 +1,7 @@
 (() => {
   const STORAGE_KEY = 'aidr_events_v1';
   const DIAGNOSTICS_KEY = 'aidr_diagnostics_v1';
+  const POLICY_KEY = 'aidr_policy_v1';
 
   const severityFilter = document.getElementById('severity-filter');
   const categoryFilter = document.getElementById('category-filter');
@@ -13,6 +14,14 @@
   const diagnosticsFileInput = document.getElementById('diagnostics-file-input');
   const diagnosticsMetaEl = document.getElementById('diagnostics-meta');
   const diagnosticsGridEl = document.getElementById('diagnostics-grid');
+  const policyMetaEl = document.getElementById('policy-meta');
+  const policyToggleModeBtn = document.getElementById('policy-toggle-mode-btn');
+  const policyPauseBtn = document.getElementById('policy-pause-btn');
+  const policyResumeBtn = document.getElementById('policy-resume-btn');
+  const policyAllowRuleInput = document.getElementById('policy-allow-rule-input');
+  const policyAllowRuleBtn = document.getElementById('policy-allow-rule-btn');
+  const policyAllowPatternInput = document.getElementById('policy-allow-pattern-input');
+  const policyAllowPatternBtn = document.getElementById('policy-allow-pattern-btn');
 
   function sanitizeEvent(evt) {
     if (!evt || typeof evt !== 'object') return null;
@@ -61,6 +70,36 @@
     return new Promise((resolve) => {
       chrome.storage.local.set({ [DIAGNOSTICS_KEY]: payload }, () => resolve());
     });
+  }
+
+  function getPolicy() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([POLICY_KEY], (res) => {
+        const p = res[POLICY_KEY] || {};
+        resolve({
+          mode: p.mode === 'shadow' ? 'shadow' : 'enforcement',
+          sessionPausedUntilTs: Number(p.sessionPausedUntilTs) || 0,
+          mutedUntilByCategory: p.mutedUntilByCategory && typeof p.mutedUntilByCategory === 'object' ? p.mutedUntilByCategory : {},
+          allowlistRuleIds: Array.isArray(p.allowlistRuleIds) ? p.allowlistRuleIds : [],
+          allowlistPatterns: Array.isArray(p.allowlistPatterns) ? p.allowlistPatterns : []
+        });
+      });
+    });
+  }
+
+  function setPolicy(policy) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [POLICY_KEY]: policy }, () => resolve());
+    });
+  }
+
+  function isPaused(policy) {
+    return Date.now() < Number(policy.sessionPausedUntilTs || 0);
+  }
+
+  async function renderPolicy() {
+    const p = await getPolicy();
+    policyMetaEl.textContent = `mode: ${p.mode}${isPaused(p) ? ' (paused)' : ''} | allow-rules: ${p.allowlistRuleIds.length} | allow-patterns: ${p.allowlistPatterns.length}`;
   }
 
   function severityClass(sev) {
@@ -320,5 +359,47 @@
     }
   });
 
+  policyToggleModeBtn.addEventListener('click', async () => {
+    const p = await getPolicy();
+    p.mode = p.mode === 'enforcement' ? 'shadow' : 'enforcement';
+    await setPolicy(p);
+    renderPolicy();
+  });
+
+  policyPauseBtn.addEventListener('click', async () => {
+    const p = await getPolicy();
+    p.sessionPausedUntilTs = Date.now() + 15 * 60 * 1000;
+    await setPolicy(p);
+    renderPolicy();
+  });
+
+  policyResumeBtn.addEventListener('click', async () => {
+    const p = await getPolicy();
+    p.sessionPausedUntilTs = 0;
+    await setPolicy(p);
+    renderPolicy();
+  });
+
+  policyAllowRuleBtn.addEventListener('click', async () => {
+    const id = String(policyAllowRuleInput.value || '').trim();
+    if (!id) return;
+    const p = await getPolicy();
+    if (!p.allowlistRuleIds.includes(id)) p.allowlistRuleIds.push(id);
+    await setPolicy(p);
+    policyAllowRuleInput.value = '';
+    renderPolicy();
+  });
+
+  policyAllowPatternBtn.addEventListener('click', async () => {
+    const pattern = String(policyAllowPatternInput.value || '').trim();
+    if (!pattern) return;
+    const p = await getPolicy();
+    if (!p.allowlistPatterns.includes(pattern)) p.allowlistPatterns.push(pattern);
+    await setPolicy(p);
+    policyAllowPatternInput.value = '';
+    renderPolicy();
+  });
+
   render();
+  renderPolicy();
 })();

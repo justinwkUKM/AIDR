@@ -10,7 +10,7 @@
     matches.push(item);
   }
 
-  function detect(text) {
+  function detect(text, context) {
     const input = String(text || '');
     const A = window.AIDR;
     const cfg = A.config;
@@ -27,6 +27,68 @@
           confidence: 0.9,
           message: 'Prompt injection phrase detected.',
           recommended_action: 'edit',
+          evidence: safeSnippet(input, m.index, m[0].length, cfg.maxEvidenceLength)
+        });
+      }
+    });
+
+    const jailbreakPatterns = [
+      /roleplay\s+as\s+an?\s+unrestricted/i,
+      /developer\s+mode/i,
+      /bypass\s+safety/i,
+      /do\s+anything\s+now/i
+    ];
+    jailbreakPatterns.forEach((re, idx) => {
+      const m = input.match(re);
+      if (m && typeof m.index === 'number') {
+        addMatch(out, {
+          id: `jb_${idx + 1}`,
+          category: 'jailbreak',
+          severity_base: 'high',
+          confidence: 0.78,
+          message: 'Jailbreak/bypass phrasing detected.',
+          recommended_action: 'warn',
+          evidence: safeSnippet(input, m.index, m[0].length, cfg.maxEvidenceLength)
+        });
+      }
+    });
+
+    const exfilPatterns = [
+      /export\s+(all|entire|full)\s+(data|history|conversation)/i,
+      /send\s+to\s+(http|https|ftp|webhook)/i,
+      /dump\s+as\s+(json|csv|xml)/i,
+      /extract\s+all\s+(emails|keys|tokens|records)/i
+    ];
+    exfilPatterns.forEach((re, idx) => {
+      const m = input.match(re);
+      if (m && typeof m.index === 'number') {
+        addMatch(out, {
+          id: `exfil_${idx + 1}`,
+          category: 'exfiltration',
+          severity_base: 'medium',
+          confidence: 0.68,
+          message: 'Potential exfiltration intent detected.',
+          recommended_action: 'warn',
+          evidence: safeSnippet(input, m.index, m[0].length, cfg.maxEvidenceLength)
+        });
+      }
+    });
+
+    const harmfulPatterns = [
+      /how\s+to\s+make\s+(a\s+)?bomb/i,
+      /instructions\s+to\s+harm/i,
+      /poison\s+someone/i
+    ];
+    harmfulPatterns.forEach((re, idx) => {
+      const m = input.match(re);
+      if (m && typeof m.index === 'number') {
+        addMatch(out, {
+          id: `harm_${idx + 1}`,
+          category: 'harmful_content',
+          severity_base: 'medium',
+          confidence: 0.7,
+          message: 'Potential harmful content signal detected.',
+          recommended_action: 'warn',
           evidence: safeSnippet(input, m.index, m[0].length, cfg.maxEvidenceLength)
         });
       }
@@ -98,6 +160,39 @@
         });
       }
     });
+
+    if (input.length > 5000) {
+      addMatch(out, {
+        id: 'beh_prompt_len',
+        category: 'behavioral',
+        severity_base: 'low',
+        confidence: 0.65,
+        message: 'Prompt length anomaly detected.',
+        recommended_action: 'warn',
+        evidence: safeSnippet(input, 0, Math.min(80, input.length), cfg.maxEvidenceLength)
+      });
+    }
+
+    if (/\b(\w+)\b(?:\s+\1\b){6,}/i.test(input)) {
+      addMatch(out, {
+        id: 'beh_repetition',
+        category: 'behavioral',
+        severity_base: 'low',
+        confidence: 0.6,
+        message: 'High repetition pattern detected.',
+        recommended_action: 'warn',
+        evidence: safeSnippet(input, 0, Math.min(80, input.length), cfg.maxEvidenceLength)
+      });
+    }
+
+    if (window.AIDR.rules && window.AIDR.rules.runCustomRules) {
+      const custom = window.AIDR.rules.runCustomRules(input, context || {});
+      custom.forEach((d) => out.push(d));
+    }
+
+    if (window.AIDR.policy && window.AIDR.policy.filterDetections) {
+      return window.AIDR.policy.filterDetections(out, input);
+    }
 
     return out;
   }

@@ -17,13 +17,16 @@
 
     const recent = history.filter((h) => now - h.ts <= windowMs);
     const repeatBonus = Math.min(30, recent.length * 10);
+    const escalationBonus = recent.length >= 2 && recent[recent.length - 1].risk > recent[0].risk ? 15 : 0;
+    const lastTs = history.length ? history[history.length - 1].ts : 0;
+    const safeStreakBonus = lastTs && (now - lastTs >= 30 * 60 * 1000) ? -10 : 0;
     const multiCategoryBonus = currentCategories.size > 1 ? 20 : 0;
 
     return {
       repeatBonus,
-      escalationBonus: 0,
+      escalationBonus,
       firstOccurrenceGrace: recent.length === 0 ? -5 : 0,
-      safeStreakBonus: 0,
+      safeStreakBonus,
       multiCategoryBonus
     };
   }

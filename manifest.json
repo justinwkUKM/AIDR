@@ -18,6 +18,8 @@
       "js": [
         "tokenizer.js",
         "aidr/aidr-config.js",
+        "aidr/aidr-policy.js",
+        "aidr/aidr-rules.js",
         "aidr/aidr-patterns.js",
         "aidr/aidr-detector.js",
         "aidr/aidr-scorer.js",
