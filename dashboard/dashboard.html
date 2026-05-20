@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIDR</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="shield">🛡️</div>
+          <div>
+            <h1>AIDR</h1>
+            <p>AI Detection &amp; Response</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div id="status-chip" class="status-chip">Monitoring</div>
+        </div>
+      </header>
+
+      <section class="threat-card">
+        <div class="threat-main">
+          <div class="threat-icon">❗</div>
+          <div>
+            <div class="threat-tag">POTENTIAL THREAT</div>
+            <h2 id="threat-title">No active threat detected</h2>
+            <p id="threat-desc">Recent prompts appear safe.</p>
+          </div>
+        </div>
+        <div class="risk-panel">
+          <div class="risk-label">RISK SCORE</div>
+          <div class="risk-score"><span id="risk-score">0</span><small>/100</small></div>
+          <div id="risk-level" class="risk-level safe">Safe</div>
+        </div>
+      </section>
+
+      <section class="info-card">
+        <h3>Why this was flagged</h3>
+        <ul id="reason-list" class="reasons">
+          <li>No flagged indicators in recent events.</li>
+        </ul>
+
+        <div class="confidence">
+          <div>
+            <div class="conf-title">Confidence over time</div>
+            <div id="confidence-sparkline" class="sparkline"></div>
+          </div>
+          <div class="conf-score">
+            <div class="conf-label">CONFIDENCE</div>
+            <div id="confidence-score" class="conf-value">0%</div>
+            <div id="confidence-level" class="conf-level safe">Safe</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="action-row">
+        <button id="action-block" class="btn danger">Block</button>
+        <button id="action-allow-once" class="btn">Allow once</button>
+        <button id="action-mute" class="btn">Mute</button>
+        <button id="action-pause" class="btn">Pause</button>
+      </section>
+
+      <section class="policy">
+        <div class="policy-head">
+          <h3>Policy mode</h3>
+          <div id="policy-meta" class="meta">mode: enforcement</div>
+        </div>
+        <div class="mode-switch">
+          <button id="mode-shadow-btn" class="mode-btn">Shadow</button>
+          <button id="mode-enforce-btn" class="mode-btn active">Enforce</button>
+        </div>
+      </section>
+
+      <section class="quick-grid">
+        <button id="quick-diagnostic" class="quick-btn">Diagnostic</button>
+        <button id="quick-logs" class="quick-btn">Logs</button>
+        <button id="quick-allowlist" class="quick-btn">Allowlist</button>
+        <button id="quick-rules" class="quick-btn">Rules</button>
+      </section>
+
+      <section id="diagnostic-panel" class="panel">
+        <div class="panel-head">
+          <h4>Diagnostics</h4>
+          <button id="recompute-diagnostics-btn" class="mini-btn">Recompute</button>
+        </div>
+        <input id="diagnostics-file-input" type="file" accept="application/json,.json" />
+        <div id="diagnostics-meta" class="panel-meta">No diagnostics.</div>
+        <div id="diagnostics-grid" class="diag-grid"></div>
+      </section>
+
+      <section id="logs-panel" class="panel">
+        <div class="panel-head">
+          <h4>Logs</h4>
+          <div class="log-actions">
+            <button id="refresh-btn" class="mini-btn">Refresh</button>
+            <button id="export-json-btn" class="mini-btn">JSON</button>
+            <button id="export-csv-btn" class="mini-btn">CSV</button>
+          </div>
+        </div>
+        <div class="filters">
+          <select id="severity-filter">
+            <option value="all">Severity: all</option>
+            <option value="critical">Severity: critical</option>
+            <option value="high">Severity: high</option>
+            <option value="medium">Severity: medium</option>
+            <option value="low">Severity: low</option>
+            <option value="safe">Severity: safe</option>
+          </select>
+          <select id="category-filter">
+            <option value="all">Category: all</option>
+            <option value="sensitive_data">sensitive_data</option>
+            <option value="prompt_injection">prompt_injection</option>
+            <option value="jailbreak">jailbreak</option>
+            <option value="exfiltration">exfiltration</option>
+            <option value="harmful_content">harmful_content</option>
+            <option value="behavioral">behavioral</option>
+          </select>
+        </div>
+        <div id="event-count" class="panel-meta">0 events</div>
+        <div class="timeline" id="timeline"></div>
+      </section>
+
+      <section id="allowlist-panel" class="panel">
+        <h4>Allowlist</h4>
+        <div class="allow-grid">
+          <input id="policy-allow-rule-input" type="text" placeholder="rule id" />
+          <button id="policy-allow-rule-btn" class="mini-btn">Add rule</button>
+          <input id="policy-allow-pattern-input" type="text" placeholder="pattern" />
+          <button id="policy-allow-pattern-btn" class="mini-btn">Add pattern</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="dashboard.js"></script>
+  </body>
+</html>
