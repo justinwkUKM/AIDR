@@ -376,8 +376,8 @@
 
   function isPromptElement(el) {
     if (!el) return false;
-    if (el.matches && el.matches('textarea, #prompt-textarea')) return true;
-    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') return true;
+    if (el.matches && el.matches('textarea, #prompt-textarea, [contenteditable=\"true\"]')) return true;
+    if (el.closest && el.closest('textarea, #prompt-textarea, [contenteditable=\"true\"]')) return true;
     return false;
   }
 
@@ -482,7 +482,7 @@
   document.addEventListener('click', (e) => {
     if (e.defaultPrevented) return;
     const button = e.target && e.target.closest
-      ? e.target.closest('button[data-testid=\"send-button\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
+      ? e.target.closest('button[data-testid=\"send-button\"], button[data-testid*=\"send\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
       : null;
     if (!button) return;
 
