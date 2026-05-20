@@ -8,8 +8,18 @@
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["tokenizer.js", "content.js"],
-      "css": ["styles.css"],
+      "js": [
+        "tokenizer.js",
+        "aidr/aidr-config.js",
+        "aidr/aidr-patterns.js",
+        "aidr/aidr-detector.js",
+        "aidr/aidr-scorer.js",
+        "aidr/aidr-logger.js",
+        "aidr/aidr-responder.js",
+        "aidr/aidr-core.js",
+        "content.js"
+      ],
+      "css": ["styles.css", "aidr/aidr-styles.css"],
       "run_at": "document_idle"
     }
   ]

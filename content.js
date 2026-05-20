@@ -225,6 +225,12 @@
   // Auto-detect model on load, allow manual override
   let selectedModel = detectCurrentModel();
   let manualModelOverride = false;
+  const aidrEngine = window.AIDR && window.AIDR.createEngine
+    ? window.AIDR.createEngine()
+    : null;
+  const sendRiskHistory = [];
+  let bypassNextSend = false;
+  const cooldownByFingerprint = new Map();
 
   let panelVisible = true;
 
@@ -312,7 +318,149 @@
     });
   }
 
+  function isPromptElement(el) {
+    if (!el) return false;
+    if (el.matches && el.matches('textarea, #prompt-textarea')) return true;
+    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') return true;
+    return false;
+  }
+
+  function promptFingerprint(text) {
+    return String(text || '').trim().slice(0, 140);
+  }
+
+  function detectionFingerprint(result) {
+    const ids = result.detections.map((d) => d.id).sort().join(',');
+    return `${result.severity}|${ids}`;
+  }
+
+  function evaluatePromptForEnforcement(text) {
+    if (!window.AIDR || !window.AIDR.detect || !window.AIDR.score) {
+      return { severity: 'safe', risk: 0, detections: [] };
+    }
+    const detections = window.AIDR.detect(text);
+    const score = window.AIDR.score(detections, sendRiskHistory);
+    return {
+      severity: score.severity,
+      risk: score.risk,
+      confidence: score.confidence,
+      detections
+    };
+  }
+
+  function persistEnforcementEvent(direction, result) {
+    if (!window.AIDR || !window.AIDR.logger || !window.AIDR.logger.logEvent) return;
+    if (result.severity === 'safe') return;
+    window.AIDR.logger.logEvent({
+      ts: Date.now(),
+      direction,
+      risk: result.risk,
+      severity: result.severity,
+      confidence: result.confidence || 0,
+      matched_rule_ids: result.detections.map((d) => d.id),
+      categories: Array.from(new Set(result.detections.map((d) => d.category))),
+      evidence_spans: result.detections.map((d) => d.evidence)
+    });
+  }
+
+  function maybeBlockPromptSend() {
+    const promptText = getInputText();
+    const fp = promptFingerprint(promptText);
+    if (!fp) return false;
+
+    const result = evaluatePromptForEnforcement(promptText);
+    sendRiskHistory.push({ ts: Date.now(), severity: result.severity, risk: result.risk });
+    if (sendRiskHistory.length > 50) sendRiskHistory.shift();
+
+    if (window.AIDR && window.AIDR.responder) {
+      window.AIDR.responder.render({
+        severity: result.severity,
+        risk: result.risk,
+        detections: result.detections
+      });
+    }
+
+    if (result.severity !== 'high' && result.severity !== 'critical') {
+      return false;
+    }
+
+    const now = Date.now();
+    const cooldownKey = detectionFingerprint(result);
+    const until = cooldownByFingerprint.get(cooldownKey) || 0;
+    if (now < until) {
+      result.suppressModal = true;
+      return result;
+    }
+    cooldownByFingerprint.set(cooldownKey, now + (window.AIDR.config.cooldownMs || 45000));
+
+    persistEnforcementEvent('prompt', result);
+    return result;
+  }
+
+  function triggerSendAfterAllowOnce() {
+    bypassNextSend = true;
+    const sendBtn = document.querySelector('button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]');
+    if (sendBtn) {
+      sendBtn.click();
+      return;
+    }
+
+    const textarea = document.querySelector('#prompt-textarea, textarea, div[contenteditable="true"]');
+    if (textarea) {
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }
+  }
+
+  async function handleBlockedPrompt(result) {
+    if (!window.AIDR || !window.AIDR.responder || !window.AIDR.responder.showBlockModal) return;
+    if (result.suppressModal) return;
+    const decision = await window.AIDR.responder.showBlockModal(result);
+    if (decision === 'allow_once') {
+      triggerSendAfterAllowOnce();
+    }
+  }
+
   // Keyboard shortcut: Ctrl+Shift+T to toggle panel
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
+    if (e.isComposing) return;
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!isPromptElement(e.target)) return;
+    if (bypassNextSend) {
+      bypassNextSend = false;
+      return;
+    }
+
+    const enforcementResult = maybeBlockPromptSend();
+    if (enforcementResult && enforcementResult.severity) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleBlockedPrompt(enforcementResult);
+    }
+  }, true);
+
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
+    const button = e.target && e.target.closest
+      ? e.target.closest('button[data-testid=\"send-button\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
+      : null;
+    if (!button) return;
+    if (bypassNextSend) {
+      bypassNextSend = false;
+      return;
+    }
+
+    const enforcementResult = maybeBlockPromptSend();
+    if (enforcementResult && enforcementResult.severity) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleBlockedPrompt(enforcementResult);
+    }
+  }, true);
+
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'T') {
       e.preventDefault();
@@ -328,7 +476,15 @@
     // Fetch messages once and reuse for all analyses
     const messages = getConversationMessages();
     const lastMsg = messages.length ? messages[messages.length - 1].text : '';
+    const lastRole = messages.length ? messages[messages.length - 1].role : '';
     const fullText = messages.map(m => m.text).join(' ');
+
+    if (aidrEngine) {
+      aidrEngine.analyzePrompt(promptText);
+      if (lastRole === 'assistant') {
+        aidrEngine.analyzeResponse(lastMsg);
+      }
+    }
 
     const promptEl = document.getElementById('ctc-prompt');
     const userEl = document.getElementById('ctc-user');
