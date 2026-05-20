@@ -25,19 +25,29 @@
     const composerForm = form || getComposerForm(document.activeElement);
     if (!composerForm) return '';
 
+    const candidates = [];
     const promptTextarea = composerForm.querySelector(
       'textarea[name="prompt-textarea"], #prompt-textarea'
     );
     if (promptTextarea && typeof promptTextarea.value === 'string') {
-      return promptTextarea.value || '';
+      candidates.push(promptTextarea.value || '');
     }
 
     const editable = composerForm.querySelector('div[contenteditable="true"]');
     if (editable) {
-      return editable.innerText || '';
+      candidates.push(editable.innerText || '');
     }
 
-    return '';
+    const active = document.activeElement;
+    if (active && active.closest && active.closest('form[data-type="unified-composer"]')) {
+      if (typeof active.value === 'string') candidates.push(active.value || '');
+      if (typeof active.innerText === 'string') candidates.push(active.innerText || '');
+      if (typeof active.textContent === 'string') candidates.push(active.textContent || '');
+    }
+
+    return candidates
+      .map((s) => String(s || '').trim())
+      .sort((a, b) => b.length - a.length)[0] || '';
   }
 
   function getConversationMessages() {
@@ -477,7 +487,92 @@
     window.AIDR.responder.showBlockedNotice(result);
   }
 
+  function installTransportGuard() {
+    if (window.__aidrTransportGuardInstalled) return;
+    window.__aidrTransportGuardInstalled = true;
+
+    const script = document.createElement('script');
+    script.textContent = `
+      (function () {
+        if (window.__aidrPageTransportGuardInstalled) return;
+        window.__aidrPageTransportGuardInstalled = true;
+
+        const PI_RE = /(ignore\\s+(all\\s+)?previous\\s+instructions|reveal\\s+hidden\\s+system\\s+prompt|new\\s+system\\s+prompt|override\\s+your\\s+rules|developer\\s+mode|bypass\\s+safety)/i;
+
+        function extractTextFromBody(body) {
+          try {
+            if (!body) return '';
+            if (typeof body === 'string') return body;
+            if (body instanceof URLSearchParams) return body.toString();
+            return String(body);
+          } catch (_) {
+            return '';
+          }
+        }
+
+        function shouldInspect(url) {
+          const u = String(url || '');
+          return /backend-api\\/conversation|\\/conversation/i.test(u);
+        }
+
+        function shouldBlock(url, bodyText) {
+          if (!shouldInspect(url)) return false;
+          return PI_RE.test(String(bodyText || ''));
+        }
+
+        function emitBlocked(url) {
+          window.dispatchEvent(new CustomEvent('aidr:transport-blocked', {
+            detail: { url: String(url || ''), category: 'prompt_injection' }
+          }));
+        }
+
+        const origFetch = window.fetch;
+        window.fetch = async function(input, init) {
+          const url = (input && input.url) ? input.url : input;
+          const bodyText = extractTextFromBody(init && init.body);
+          if (shouldBlock(url, bodyText)) {
+            emitBlocked(url);
+            throw new Error('AIDR_BLOCKED_REQUEST');
+          }
+          return origFetch.apply(this, arguments);
+        };
+
+        const origOpen = XMLHttpRequest.prototype.open;
+        const origSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          this.__aidr_url = url;
+          return origOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+          const bodyText = extractTextFromBody(body);
+          if (shouldBlock(this.__aidr_url, bodyText)) {
+            emitBlocked(this.__aidr_url);
+            throw new Error('AIDR_BLOCKED_REQUEST');
+          }
+          return origSend.apply(this, arguments);
+        };
+      })();
+    `;
+    (document.documentElement || document.head || document.body).appendChild(script);
+    script.remove();
+  }
+
   // Keyboard shortcut: Ctrl+Shift+T to toggle panel
+  installTransportGuard();
+
+  window.addEventListener('aidr:transport-blocked', () => {
+    handleBlockedPrompt({
+      severity: 'critical',
+      risk: 100,
+      confidence: 1,
+      detections: [{
+        id: 'transport_pi_block',
+        category: 'prompt_injection',
+        message: 'Blocked at transport layer.'
+      }]
+    });
+  }, true);
+
   window.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (e.isComposing) return;
