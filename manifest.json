@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Counts approximate input and output tokens on ChatGPT pages.",
   "permissions": ["storage"],
-  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+  "host_permissions": ["https://*/*", "http://*/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'"
   },
@@ -17,7 +17,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "matches": ["https://*/*", "http://*/*"],
       "js": [
         "tokenizer.js",
         "aidr/aidr-config.js",
@@ -38,7 +38,7 @@
   "web_accessible_resources": [
     {
       "resources": ["aidr/page-transport-guard.js"],
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
+      "matches": ["https://*/*", "http://*/*"]
     }
   ]
 }
