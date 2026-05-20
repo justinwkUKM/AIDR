@@ -13,22 +13,28 @@
   // DOM Reading Helpers
   // --------------------------
 
-  function getInputText() {
-    const selectors = [
-      'textarea',
-      'div[contenteditable="true"]',
-      '#prompt-textarea'
-    ];
+  function getComposerForm(el) {
+    if (el && el.closest) {
+      const fromTarget = el.closest('form[data-type="unified-composer"]');
+      if (fromTarget) return fromTarget;
+    }
+    return document.querySelector('form[data-type="unified-composer"]');
+  }
 
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      if (!el) continue;
+  function getInputText(form) {
+    const composerForm = form || getComposerForm(document.activeElement);
+    if (!composerForm) return '';
 
-      if (el.tagName === 'TEXTAREA') {
-        return el.value || '';
-      }
+    const promptTextarea = composerForm.querySelector(
+      'textarea[name="prompt-textarea"], #prompt-textarea'
+    );
+    if (promptTextarea && typeof promptTextarea.value === 'string') {
+      return promptTextarea.value || '';
+    }
 
-      return el.innerText || '';
+    const editable = composerForm.querySelector('div[contenteditable="true"]');
+    if (editable) {
+      return editable.innerText || '';
     }
 
     return '';
@@ -381,6 +387,11 @@
     return false;
   }
 
+  function isComposerContext(el) {
+    if (!el || !el.closest) return false;
+    return !!el.closest('form[data-type=\"unified-composer\"], #thread-bottom-container');
+  }
+
   function promptFingerprint(text) {
     return String(text || '').trim().slice(0, 140);
   }
@@ -419,8 +430,8 @@
     });
   }
 
-  function maybeBlockPromptSend() {
-    const promptText = getInputText();
+  function maybeBlockPromptSend(form) {
+    const promptText = getInputText(form);
     const fp = promptFingerprint(promptText);
     if (!fp) return false;
 
@@ -468,9 +479,13 @@
     if (e.isComposing) return;
     if (e.key !== 'Enter') return;
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
-    if (!isPromptElement(e.target)) return;
+    const active = document.activeElement;
+    const inComposer = isComposerContext(e.target) || isComposerContext(active);
+    if (!inComposer && !isPromptElement(e.target) && !isPromptElement(active)) return;
 
-    const enforcementResult = maybeBlockPromptSend();
+    const form = getComposerForm(e.target) || getComposerForm(active);
+    if (!form) return;
+    const enforcementResult = maybeBlockPromptSend(form);
     if (enforcementResult && enforcementResult.severity) {
       e.preventDefault();
       e.stopPropagation();
@@ -482,11 +497,13 @@
   document.addEventListener('click', (e) => {
     if (e.defaultPrevented) return;
     const button = e.target && e.target.closest
-      ? e.target.closest('button[data-testid=\"send-button\"], button[data-testid*=\"send\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
+      ? e.target.closest('#composer-submit-button, button[data-testid=\"send-button\"], button[data-testid*=\"send\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
       : null;
     if (!button) return;
+    const form = getComposerForm(button);
+    if (!form) return;
 
-    const enforcementResult = maybeBlockPromptSend();
+    const enforcementResult = maybeBlockPromptSend(form);
     if (enforcementResult && enforcementResult.severity) {
       e.preventDefault();
       e.stopPropagation();
@@ -496,7 +513,9 @@
   }, true);
 
   document.addEventListener('submit', (e) => {
-    const enforcementResult = maybeBlockPromptSend();
+    const form = e.target;
+    if (!form || !form.matches || !form.matches('form[data-type=\"unified-composer\"]')) return;
+    const enforcementResult = maybeBlockPromptSend(form);
     if (enforcementResult && enforcementResult.severity) {
       e.preventDefault();
       e.stopPropagation();
