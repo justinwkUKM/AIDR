@@ -72,6 +72,44 @@ button:hover { border-color: var(--accent); cursor: pointer; }
   margin-bottom: 8px;
 }
 
+.diagnostics {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--panel-soft);
+}
+
+.diag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.diag-head h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.diag-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.diag-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.diag-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 11px;
+}
+
 .timeline {
   display: flex;
   flex-direction: column;
