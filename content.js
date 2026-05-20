@@ -285,22 +285,11 @@
       <div class="ctc-topics">🔑 Last: <span id="ctc-last-topics">--</span></div>
       <div class="ctc-topics">🔑 Overall: <span id="ctc-overall-topics">--</span></div>
       <div>"paynet" mentions: <span id="ctc-paynet">0</span></div>
-      <div class="ctc-topics">AIDR logging: <span id="ctc-aidr-log-state">on</span></div>
-      <div class="ctc-topics">
-        <button id="ctc-aidr-log-toggle" type="button">Toggle Log</button>
-        <button id="ctc-aidr-export-json" type="button">Export JSON</button>
-        <button id="ctc-aidr-export-csv" type="button">Export CSV</button>
-        <button id="ctc-aidr-clear" type="button">Clear Logs</button>
-      </div>
       <div class="ctc-topics">AIDR mode: <span id="ctc-aidr-mode-state">enforcement</span></div>
       <div class="ctc-topics">
         <button id="ctc-aidr-mode-toggle" type="button">Toggle Mode</button>
-        <button id="ctc-aidr-pause-15" type="button">Pause 15m</button>
+        <button id="ctc-aidr-pause-15" type="button">Pause</button>
         <button id="ctc-aidr-resume" type="button">Resume</button>
-      </div>
-      <div class="ctc-topics">
-        <input id="ctc-aidr-mute-category" type="text" placeholder="mute category (e.g. prompt_injection)" />
-        <button id="ctc-aidr-mute-30" type="button">Mute 30m</button>
       </div>
     `;
     document.body.appendChild(panel);
@@ -336,23 +325,10 @@
       updatePanel();
     });
 
-    const logStateEl = document.getElementById('ctc-aidr-log-state');
-    const logToggleBtn = document.getElementById('ctc-aidr-log-toggle');
-    const exportJsonBtn = document.getElementById('ctc-aidr-export-json');
-    const exportCsvBtn = document.getElementById('ctc-aidr-export-csv');
-    const clearBtn = document.getElementById('ctc-aidr-clear');
     const modeStateEl = document.getElementById('ctc-aidr-mode-state');
     const modeToggleBtn = document.getElementById('ctc-aidr-mode-toggle');
     const pauseBtn = document.getElementById('ctc-aidr-pause-15');
     const resumeBtn = document.getElementById('ctc-aidr-resume');
-    const muteCategoryInput = document.getElementById('ctc-aidr-mute-category');
-    const muteBtn = document.getElementById('ctc-aidr-mute-30');
-
-    async function refreshLogState() {
-      if (!window.AIDR || !window.AIDR.logger || !logStateEl) return;
-      const enabled = await window.AIDR.logger.isLoggingEnabled();
-      logStateEl.textContent = enabled ? 'on' : 'off';
-    }
 
     async function refreshPolicyState() {
       if (!window.AIDR || !window.AIDR.policy || !modeStateEl) return;
@@ -373,34 +349,6 @@
       URL.revokeObjectURL(url);
     }
 
-    if (logToggleBtn) {
-      logToggleBtn.addEventListener('click', async () => {
-        if (!window.AIDR || !window.AIDR.logger) return;
-        const curr = await window.AIDR.logger.isLoggingEnabled();
-        await window.AIDR.logger.setLoggingEnabled(!curr);
-        await refreshLogState();
-      });
-    }
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', async () => {
-        if (!window.AIDR || !window.AIDR.logger) return;
-        const text = await window.AIDR.logger.exportJson();
-        downloadTextFile('aidr-events.json', text, 'application/json');
-      });
-    }
-    if (exportCsvBtn) {
-      exportCsvBtn.addEventListener('click', async () => {
-        if (!window.AIDR || !window.AIDR.logger) return;
-        const text = await window.AIDR.logger.exportCsv();
-        downloadTextFile('aidr-events.csv', text, 'text/csv');
-      });
-    }
-    if (clearBtn) {
-      clearBtn.addEventListener('click', async () => {
-        if (!window.AIDR || !window.AIDR.logger) return;
-        await window.AIDR.logger.clearEvents();
-      });
-    }
     if (modeToggleBtn) {
       modeToggleBtn.addEventListener('click', async () => {
         if (!window.AIDR || !window.AIDR.policy) return;
@@ -423,15 +371,6 @@
         await refreshPolicyState();
       });
     }
-    if (muteBtn) {
-      muteBtn.addEventListener('click', async () => {
-        if (!window.AIDR || !window.AIDR.policy || !muteCategoryInput) return;
-        const cat = String(muteCategoryInput.value || '').trim();
-        if (!cat) return;
-        await window.AIDR.policy.muteCategory(cat, 30);
-      });
-    }
-    refreshLogState();
     refreshPolicyState();
   }
 

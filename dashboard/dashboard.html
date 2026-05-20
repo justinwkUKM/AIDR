@@ -3,89 +3,71 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AIDR Dashboard</title>
+    <title>AIDR</title>
     <link rel="stylesheet" href="dashboard.css" />
   </head>
   <body>
     <main class="app">
       <header class="top">
-        <h1>AIDR Dashboard</h1>
-        <p>Timeline and filters for local risk events</p>
+        <h1>AIDR</h1>
+        <div id="policy-meta" class="chip">mode: enforcement</div>
       </header>
 
       <section class="controls">
-        <label>
-          Severity
-          <select id="severity-filter">
-            <option value="all">All</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-            <option value="safe">Safe</option>
-          </select>
-        </label>
-
-        <label>
-          Category
-          <select id="category-filter">
-            <option value="all">All</option>
-            <option value="sensitive_data">Sensitive Data</option>
-            <option value="prompt_injection">Prompt Injection</option>
-            <option value="jailbreak">Jailbreak</option>
-            <option value="exfiltration">Exfiltration</option>
-            <option value="harmful_content">Harmful Content</option>
-            <option value="behavioral">Behavioral</option>
-          </select>
-        </label>
+        <select id="severity-filter">
+          <option value="all">Severity: all</option>
+          <option value="critical">Severity: critical</option>
+          <option value="high">Severity: high</option>
+          <option value="medium">Severity: medium</option>
+          <option value="low">Severity: low</option>
+          <option value="safe">Severity: safe</option>
+        </select>
+        <select id="category-filter">
+          <option value="all">Category: all</option>
+          <option value="sensitive_data">sensitive_data</option>
+          <option value="prompt_injection">prompt_injection</option>
+          <option value="jailbreak">jailbreak</option>
+          <option value="exfiltration">exfiltration</option>
+          <option value="harmful_content">harmful_content</option>
+          <option value="behavioral">behavioral</option>
+        </select>
       </section>
 
       <section class="actions">
-        <button id="refresh-btn">Refresh</button>
-        <button id="export-json-btn">Export JSON</button>
-        <button id="export-csv-btn">Export CSV</button>
+        <button id="policy-toggle-mode-btn">toggle mode</button>
+        <button id="policy-pause-btn">pause 15m</button>
+        <button id="policy-resume-btn">resume</button>
+      </section>
+
+      <section class="actions">
+        <button id="refresh-btn">refresh</button>
+        <button id="export-json-btn">json</button>
+        <button id="export-csv-btn">csv</button>
       </section>
 
       <section class="diagnostics">
         <div class="diag-head">
-          <h2>Policy Controls</h2>
+          <h2>Diagnostics</h2>
+          <button id="recompute-diagnostics-btn">recompute</button>
         </div>
-        <div class="diag-meta" id="policy-meta">mode: enforcement</div>
-        <div class="actions">
-          <button id="policy-toggle-mode-btn">Toggle Mode</button>
-          <button id="policy-pause-btn">Pause 15m</button>
-          <button id="policy-resume-btn">Resume</button>
-        </div>
-        <div class="diag-upload">
-          <label for="policy-allow-rule-input">Allowlist Rule ID</label>
-          <input id="policy-allow-rule-input" type="text" />
-          <button id="policy-allow-rule-btn">Add Rule ID</button>
-        </div>
-        <div class="diag-upload">
-          <label for="policy-allow-pattern-input">Allowlist Pattern</label>
-          <input id="policy-allow-pattern-input" type="text" />
-          <button id="policy-allow-pattern-btn">Add Pattern</button>
-        </div>
+        <input id="diagnostics-file-input" type="file" accept="application/json,.json" />
+        <div id="diagnostics-meta" class="diag-meta">No diagnostics.</div>
+        <div id="diagnostics-grid" class="diag-grid"></div>
       </section>
 
       <section class="stats">
         <div id="event-count">0 events</div>
       </section>
 
-      <section class="diagnostics">
-        <div class="diag-head">
-          <h2>Diagnostics</h2>
-          <button id="recompute-diagnostics-btn">Recompute</button>
-        </div>
-        <div class="diag-upload">
-          <label for="diagnostics-file-input">Labeled Dataset (JSON)</label>
-          <input id="diagnostics-file-input" type="file" accept="application/json,.json" />
-        </div>
-        <div id="diagnostics-meta" class="diag-meta">No diagnostics computed yet.</div>
-        <div id="diagnostics-grid" class="diag-grid"></div>
-      </section>
-
       <section class="timeline" id="timeline"></section>
+
+      <section class="diagnostics">
+        <div class="diag-head"><h2>Allowlist</h2></div>
+        <input id="policy-allow-rule-input" type="text" placeholder="rule id" />
+        <button id="policy-allow-rule-btn">add rule</button>
+        <input id="policy-allow-pattern-input" type="text" placeholder="pattern" />
+        <button id="policy-allow-pattern-btn">add pattern</button>
+      </section>
     </main>
 
     <script src="dashboard.js"></script>
