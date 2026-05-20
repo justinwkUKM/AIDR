@@ -48,6 +48,7 @@
       <div class="aidr-modal-title">AIDR blocked this message</div>
       <div class="aidr-modal-subtitle" id="aidr-modal-subtitle"></div>
       <div class="aidr-modal-evidence" id="aidr-modal-evidence"></div>
+      <div class="aidr-modal-evidence" id="aidr-modal-details"></div>
       <div class="aidr-modal-typed" id="aidr-modal-typed" style="display:none;">
         <label for="aidr-typed-input">Type <strong>ALLOW</strong> to confirm:</label>
         <input id="aidr-typed-input" type="text" autocomplete="off" />
@@ -67,6 +68,7 @@
     const { backdrop, modal } = ensureModal();
     const subtitle = modal.querySelector('#aidr-modal-subtitle');
     const evidence = modal.querySelector('#aidr-modal-evidence');
+    const details = modal.querySelector('#aidr-modal-details');
     const typedWrap = modal.querySelector('#aidr-modal-typed');
     const typedInput = modal.querySelector('#aidr-typed-input');
     const editBtn = modal.querySelector('#aidr-edit-btn');
@@ -75,6 +77,10 @@
 
     subtitle.textContent = `Severity: ${result.severity.toUpperCase()} | Risk: ${result.risk}`;
     evidence.textContent = result.detections.slice(0, 2).map((d) => d.message).join(' | ');
+    details.textContent = result.detections
+      .slice(0, 3)
+      .map((d) => `${d.id}: ${d.evidence || '--'}`)
+      .join(' || ');
     if (result.severity === 'critical' && overrideMode === 'typed_confirm') {
       typedWrap.style.display = 'block';
       typedInput.value = '';

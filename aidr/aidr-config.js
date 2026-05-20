@@ -2,8 +2,8 @@
   const config = {
     version: '1.0.0-v1',
     enabled: true,
-    mode: 'enforcement',
-    criticalOverrideMode: 'single_confirm',
+    mode: 'shadow',
+    criticalOverrideMode: 'typed_confirm',
     contextWindowSize: 8,
     maxEvidenceLength: 64,
     repeatWindowMs: 30 * 60 * 1000,

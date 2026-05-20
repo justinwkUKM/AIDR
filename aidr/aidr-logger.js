@@ -63,6 +63,20 @@
     const enabled = await isLoggingEnabled();
     if (!enabled) return;
 
+    // Prefer background worker serialization when available.
+    if (chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+      try {
+        const ack = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ type: 'AIDR_LOG_EVENT', payload: eventData }, (resp) => {
+            resolve(resp || { ok: false });
+          });
+        });
+        if (ack && ack.ok) return;
+      } catch (_) {
+        // Fallback to local write path.
+      }
+    }
+
     const key = window.AIDR.config.storageKey;
     const old = await loadEvents();
     const cutoff = retentionCutoffMs();

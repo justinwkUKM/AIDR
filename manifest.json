@@ -12,6 +12,9 @@
     "default_title": "AIDR Dashboard",
     "default_popup": "dashboard/dashboard.html"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
