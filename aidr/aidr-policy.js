@@ -2,7 +2,7 @@
   const KEY = 'aidr_policy_v1';
 
   const defaultState = {
-    mode: 'shadow',
+    mode: 'enforcement',
     sessionPausedUntilTs: 0,
     mutedUntilByCategory: {},
     allowlistRuleIds: [],

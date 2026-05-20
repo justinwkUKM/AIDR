@@ -232,7 +232,6 @@
     window.AIDR.policy.init();
   }
   const sendRiskHistory = [];
-  let bypassAllowedFingerprint = null;
   const cooldownByFingerprint = new Map();
 
   let panelVisible = true;
@@ -519,27 +518,9 @@
     return result;
   }
 
-  function triggerSendAfterAllowOnce(approvedFingerprint) {
-    bypassAllowedFingerprint = approvedFingerprint;
-    const sendBtn = document.querySelector('button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]');
-    if (sendBtn) {
-      sendBtn.click();
-      return;
-    }
-
-    const textarea = document.querySelector('#prompt-textarea, textarea, div[contenteditable="true"]');
-    if (textarea) {
-      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    }
-  }
-
-  async function handleBlockedPrompt(result) {
-    if (!window.AIDR || !window.AIDR.responder || !window.AIDR.responder.showBlockModal) return;
-    if (result.suppressModal) return;
-    const decision = await window.AIDR.responder.showBlockModal(result);
-    if (decision === 'allow_once') {
-      triggerSendAfterAllowOnce(promptFingerprint(getInputText()));
-    }
+  function handleBlockedPrompt(result) {
+    if (!window.AIDR || !window.AIDR.responder || !window.AIDR.responder.showBlockedNotice) return;
+    window.AIDR.responder.showBlockedNotice(result);
   }
 
   // Keyboard shortcut: Ctrl+Shift+T to toggle panel
@@ -549,11 +530,6 @@
     if (e.key !== 'Enter') return;
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     if (!isPromptElement(e.target)) return;
-    const currentFingerprint = promptFingerprint(getInputText());
-    if (bypassAllowedFingerprint && bypassAllowedFingerprint === currentFingerprint) {
-      bypassAllowedFingerprint = null;
-      return;
-    }
 
     const enforcementResult = maybeBlockPromptSend();
     if (enforcementResult && enforcementResult.severity) {
@@ -570,12 +546,17 @@
       ? e.target.closest('button[data-testid=\"send-button\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
       : null;
     if (!button) return;
-    const currentFingerprint = promptFingerprint(getInputText());
-    if (bypassAllowedFingerprint && bypassAllowedFingerprint === currentFingerprint) {
-      bypassAllowedFingerprint = null;
-      return;
-    }
 
+    const enforcementResult = maybeBlockPromptSend();
+    if (enforcementResult && enforcementResult.severity) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleBlockedPrompt(enforcementResult);
+    }
+  }, true);
+
+  document.addEventListener('submit', (e) => {
     const enforcementResult = maybeBlockPromptSend();
     if (enforcementResult && enforcementResult.severity) {
       e.preventDefault();

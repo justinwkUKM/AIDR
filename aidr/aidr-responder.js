@@ -1,7 +1,6 @@
 (function () {
   const BANNER_ID = 'aidr-warning-banner';
-  const MODAL_ID = 'aidr-block-modal';
-  const BACKDROP_ID = 'aidr-block-backdrop';
+  let hideTimer = null;
 
   function ensureBanner() {
     let banner = document.getElementById(BANNER_ID);
@@ -18,6 +17,15 @@
     return `aidr-${severity}`;
   }
 
+  function setBannerText(banner, result, blocked) {
+    const sev = String(result.severity || 'safe').toUpperCase();
+    const risk = Number(result.risk || 0);
+    const top = (result.detections || []).slice(0, 2).map((d) => d.id).join(', ');
+    banner.textContent = blocked
+      ? `[AIDR BLOCKED ${sev} ${risk}] ${top || 'risk detected'}`
+      : `[AIDR ${sev} ${risk}] ${top || 'signal detected'}`;
+  }
+
   function render(result) {
     const banner = ensureBanner();
     if (!result || result.severity === 'safe') {
@@ -26,99 +34,26 @@
       return;
     }
 
-    const summary = result.detections.slice(0, 2).map((d) => d.message).join(' | ');
     banner.className = severityClass(result.severity);
-    banner.textContent = `[AIDR ${result.severity.toUpperCase()} ${result.risk}] ${summary}`;
+    setBannerText(banner, result, false);
     banner.style.display = 'block';
   }
 
-  function ensureModal() {
-    let backdrop = document.getElementById(BACKDROP_ID);
-    let modal = document.getElementById(MODAL_ID);
-    if (backdrop && modal) return { backdrop, modal };
+  function showBlockedNotice(result) {
+    const banner = ensureBanner();
+    banner.className = severityClass(result && result.severity ? result.severity : 'critical');
+    setBannerText(banner, result || { severity: 'critical', risk: 0, detections: [] }, true);
+    banner.style.display = 'block';
 
-    backdrop = document.createElement('div');
-    backdrop.id = BACKDROP_ID;
-    backdrop.style.display = 'none';
-
-    modal = document.createElement('div');
-    modal.id = MODAL_ID;
-    modal.style.display = 'none';
-    modal.innerHTML = `
-      <div class="aidr-modal-title">AIDR blocked this message</div>
-      <div class="aidr-modal-subtitle" id="aidr-modal-subtitle"></div>
-      <div class="aidr-modal-evidence" id="aidr-modal-evidence"></div>
-      <div class="aidr-modal-evidence" id="aidr-modal-details"></div>
-      <div class="aidr-modal-typed" id="aidr-modal-typed" style="display:none;">
-        <label for="aidr-typed-input">Type <strong>ALLOW</strong> to confirm:</label>
-        <input id="aidr-typed-input" type="text" autocomplete="off" />
-      </div>
-      <div class="aidr-modal-actions">
-        <button id="aidr-edit-btn" class="aidr-btn aidr-btn-secondary">Edit</button>
-        <button id="aidr-allow-btn" class="aidr-btn aidr-btn-danger">Allow once</button>
-      </div>
-    `;
-
-    document.body.appendChild(backdrop);
-    document.body.appendChild(modal);
-    return { backdrop, modal };
-  }
-
-  function showBlockModal(result) {
-    const { backdrop, modal } = ensureModal();
-    const subtitle = modal.querySelector('#aidr-modal-subtitle');
-    const evidence = modal.querySelector('#aidr-modal-evidence');
-    const details = modal.querySelector('#aidr-modal-details');
-    const typedWrap = modal.querySelector('#aidr-modal-typed');
-    const typedInput = modal.querySelector('#aidr-typed-input');
-    const editBtn = modal.querySelector('#aidr-edit-btn');
-    const allowBtn = modal.querySelector('#aidr-allow-btn');
-    const overrideMode = (window.AIDR && window.AIDR.config && window.AIDR.config.criticalOverrideMode) || 'single_confirm';
-
-    subtitle.textContent = `Severity: ${result.severity.toUpperCase()} | Risk: ${result.risk}`;
-    evidence.textContent = result.detections.slice(0, 2).map((d) => d.message).join(' | ');
-    details.textContent = result.detections
-      .slice(0, 3)
-      .map((d) => `${d.id}: ${d.evidence || '--'}`)
-      .join(' || ');
-    if (result.severity === 'critical' && overrideMode === 'typed_confirm') {
-      typedWrap.style.display = 'block';
-      typedInput.value = '';
-      allowBtn.disabled = true;
-      typedInput.focus();
-    } else {
-      typedWrap.style.display = 'none';
-      allowBtn.disabled = false;
-    }
-
-    backdrop.style.display = 'block';
-    modal.style.display = 'block';
-
-    return new Promise((resolve) => {
-      function cleanup(decision) {
-        backdrop.style.display = 'none';
-        modal.style.display = 'none';
-        editBtn.removeEventListener('click', onEdit);
-        allowBtn.removeEventListener('click', onAllow);
-        backdrop.removeEventListener('click', onEdit);
-        typedInput.removeEventListener('input', onTypedInput);
-        resolve(decision);
-      }
-      function onEdit() { cleanup('edit'); }
-      function onAllow() { cleanup('allow_once'); }
-      function onTypedInput() {
-        allowBtn.disabled = typedInput.value.trim().toUpperCase() !== 'ALLOW';
-      }
-      editBtn.addEventListener('click', onEdit);
-      allowBtn.addEventListener('click', onAllow);
-      backdrop.addEventListener('click', onEdit);
-      typedInput.addEventListener('input', onTypedInput);
-    });
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      banner.style.display = 'none';
+    }, 4500);
   }
 
   window.AIDR = window.AIDR || {};
   window.AIDR.responder = {
     render,
-    showBlockModal
+    showBlockedNotice
   };
 })();

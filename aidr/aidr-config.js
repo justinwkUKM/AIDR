@@ -2,7 +2,7 @@
   const config = {
     version: '1.0.0-v1',
     enabled: true,
-    mode: 'shadow',
+    mode: 'enforcement',
     criticalOverrideMode: 'typed_confirm',
     contextWindowSize: 8,
     maxEvidenceLength: 64,
