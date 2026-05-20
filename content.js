@@ -447,7 +447,11 @@
       });
     }
 
-    if (result.severity !== 'high' && result.severity !== 'critical') {
+    const hasHardBlockCategory = result.detections.some((d) =>
+      d && (d.category === 'prompt_injection' || d.category === 'jailbreak')
+    );
+    const shouldBlockBySeverity = result.severity === 'high' || result.severity === 'critical';
+    if (!shouldBlockBySeverity && !hasHardBlockCategory) {
       return false;
     }
 
@@ -474,7 +478,7 @@
   }
 
   // Keyboard shortcut: Ctrl+Shift+T to toggle panel
-  document.addEventListener('keydown', (e) => {
+  window.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (e.isComposing) return;
     if (e.key !== 'Enter') return;
@@ -494,7 +498,7 @@
     }
   }, true);
 
-  document.addEventListener('click', (e) => {
+  window.addEventListener('click', (e) => {
     if (e.defaultPrevented) return;
     const button = e.target && e.target.closest
       ? e.target.closest('#composer-submit-button, button[data-testid=\"send-button\"], button[data-testid*=\"send\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
@@ -512,7 +516,7 @@
     }
   }, true);
 
-  document.addEventListener('submit', (e) => {
+  window.addEventListener('submit', (e) => {
     const form = e.target;
     if (!form || !form.matches || !form.matches('form[data-type=\"unified-composer\"]')) return;
     const enforcementResult = maybeBlockPromptSend(form);
