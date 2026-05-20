@@ -23,7 +23,8 @@
     return new Promise((resolve) => {
       const key = window.AIDR.config.storageKey;
       chrome.storage.local.get([key], (res) => {
-        resolve(Array.isArray(res[key]) ? res[key] : []);
+        const raw = Array.isArray(res[key]) ? res[key] : [];
+        resolve(raw.map(sanitizeEvent).filter(Boolean));
       });
     });
   }
@@ -34,15 +35,27 @@
   }
 
   function sanitizeEvent(evt) {
+    if (!evt || typeof evt !== 'object') return null;
+    const ts = Number(evt.ts);
+    if (!Number.isFinite(ts) || ts <= 0) return null;
+
+    const risk = Number(evt.risk);
+    const confidence = Number(evt.confidence);
+    const direction = String(evt.direction || 'unknown');
+    const severity = String(evt.severity || 'safe');
+    const ruleIds = Array.isArray(evt.matched_rule_ids) ? evt.matched_rule_ids : [];
+    const categories = Array.isArray(evt.categories) ? evt.categories : [];
+    const evidence = Array.isArray(evt.evidence_spans) ? evt.evidence_spans : [];
+
     return {
-      ts: evt.ts,
-      direction: evt.direction,
-      risk: evt.risk,
-      severity: evt.severity,
-      confidence: evt.confidence,
-      matched_rule_ids: evt.matched_rule_ids,
-      categories: evt.categories,
-      evidence_spans: evt.evidence_spans
+      ts,
+      direction: direction.slice(0, 24),
+      risk: Number.isFinite(risk) ? Math.max(0, Math.min(100, risk)) : 0,
+      severity: severity.slice(0, 16),
+      confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
+      matched_rule_ids: ruleIds.map((v) => String(v).slice(0, 64)).slice(0, 12),
+      categories: categories.map((v) => String(v).slice(0, 32)).slice(0, 8),
+      evidence_spans: evidence.map((v) => String(v).slice(0, 128)).slice(0, 8)
     };
   }
 
@@ -55,7 +68,9 @@
     const cutoff = retentionCutoffMs();
 
     const kept = old.filter((e) => e.ts >= cutoff);
-    const next = kept.concat([sanitizeEvent(eventData)]);
+    const sanitized = sanitizeEvent(eventData);
+    if (!sanitized) return;
+    const next = kept.concat([sanitized]);
     while (next.length > window.AIDR.config.maxEvents) {
       next.shift();
     }
