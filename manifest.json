@@ -34,5 +34,11 @@
       "css": ["styles.css", "aidr/aidr-styles.css"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["aidr/page-transport-guard.js"],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
+    }
   ]
 }

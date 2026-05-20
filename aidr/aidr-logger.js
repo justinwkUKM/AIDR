@@ -6,36 +6,61 @@
     return !!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local);
   }
 
+  function storageGet(keys, fallback) {
+    if (!hasChromeStorage()) return Promise.resolve(fallback);
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(keys, (res) => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            resolve(fallback);
+            return;
+          }
+          resolve(res || fallback);
+        });
+      } catch (_) {
+        resolve(fallback);
+      }
+    });
+  }
+
+  function storageSet(obj) {
+    if (!hasChromeStorage()) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.set(obj, () => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            resolve(false);
+            return;
+          }
+          resolve(true);
+        });
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
   function isLoggingEnabled() {
     if (!hasChromeStorage()) return Promise.resolve(true);
-    return new Promise((resolve) => {
-      chrome.storage.local.get([ENABLED_KEY], (res) => {
-        if (typeof res[ENABLED_KEY] !== 'boolean') {
-          resolve(true);
-          return;
-        }
-        resolve(res[ENABLED_KEY]);
-      });
+    return storageGet([ENABLED_KEY], {}).then((res) => {
+      if (typeof res[ENABLED_KEY] !== 'boolean') return true;
+      return res[ENABLED_KEY];
     });
   }
 
   function setLoggingEnabled(enabled) {
     if (!hasChromeStorage()) return Promise.resolve();
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [ENABLED_KEY]: Boolean(enabled) }, () => resolve());
-    });
+    return storageSet({ [ENABLED_KEY]: Boolean(enabled) });
   }
 
   function loadEvents() {
     if (!hasChromeStorage()) {
       return Promise.resolve(memoryStore.map(sanitizeEvent).filter(Boolean));
     }
-    return new Promise((resolve) => {
+    return storageGet([window.AIDR.config.storageKey], {}).then((res) => {
       const key = window.AIDR.config.storageKey;
-      chrome.storage.local.get([key], (res) => {
-        const raw = Array.isArray(res[key]) ? res[key] : [];
-        resolve(raw.map(sanitizeEvent).filter(Boolean));
-      });
+      const raw = Array.isArray(res[key]) ? res[key] : [];
+      return raw.map(sanitizeEvent).filter(Boolean);
     });
   }
 
@@ -107,9 +132,7 @@
       next.shift();
     }
 
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [key]: next }, () => resolve());
-    });
+    return storageSet({ [key]: next });
   }
 
   function clearEvents() {
@@ -118,9 +141,7 @@
       return Promise.resolve();
     }
     const key = window.AIDR.config.storageKey;
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [key]: [] }, () => resolve());
-    });
+    return storageSet({ [key]: [] });
   }
 
   async function exportJson() {
