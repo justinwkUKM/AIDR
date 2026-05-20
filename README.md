@@ -14,6 +14,14 @@ AIDR (AI Detection and Response) is a Chrome extension security layer focused on
 
 This repository currently contains the baseline extension files and a revised implementation plan for AIDR.
 
+## Performance Harness
+
+- Local synthetic benchmark script:
+  - `node scripts/aidr-bench.js`
+  - Optional iterations: `node scripts/aidr-bench.js 5000`
+- Runtime metrics are also available from the content-script engine via:
+  - `window.AIDR.createEngine().getPerformanceStats()`
+
 ## Next Steps
 
 1. Implement `v1` detection primitives and scoring from `AIDR_PLAN.md`.
