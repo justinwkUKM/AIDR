@@ -21,7 +21,8 @@
 
   function createEngine() {
     const recentHistory = [];
-    let lastFingerprint = '';
+    const recentFingerprints = new Map();
+    const dedupeTtlMs = 1200;
     const perf = {
       samples: 0,
       totalMs: 0,
@@ -35,8 +36,13 @@
       if (!input) return null;
 
       const fingerprint = `${direction}:${input.slice(0, 140)}`;
-      if (fingerprint === lastFingerprint) return null;
-      lastFingerprint = fingerprint;
+      const now = Date.now();
+      const prev = recentFingerprints.get(fingerprint) || 0;
+      if (now - prev < dedupeTtlMs) return null;
+      recentFingerprints.set(fingerprint, now);
+      for (const [k, ts] of recentFingerprints.entries()) {
+        if (now - ts > dedupeTtlMs * 3) recentFingerprints.delete(k);
+      }
 
       const detections = window.AIDR.detect(input);
       const score = window.AIDR.score(detections, recentHistory);

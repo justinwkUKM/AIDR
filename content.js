@@ -229,7 +229,7 @@
     ? window.AIDR.createEngine()
     : null;
   const sendRiskHistory = [];
-  let bypassNextSend = false;
+  let bypassAllowedFingerprint = null;
   const cooldownByFingerprint = new Map();
 
   let panelVisible = true;
@@ -458,8 +458,8 @@
     return result;
   }
 
-  function triggerSendAfterAllowOnce() {
-    bypassNextSend = true;
+  function triggerSendAfterAllowOnce(approvedFingerprint) {
+    bypassAllowedFingerprint = approvedFingerprint;
     const sendBtn = document.querySelector('button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]');
     if (sendBtn) {
       sendBtn.click();
@@ -477,7 +477,7 @@
     if (result.suppressModal) return;
     const decision = await window.AIDR.responder.showBlockModal(result);
     if (decision === 'allow_once') {
-      triggerSendAfterAllowOnce();
+      triggerSendAfterAllowOnce(promptFingerprint(getInputText()));
     }
   }
 
@@ -488,8 +488,9 @@
     if (e.key !== 'Enter') return;
     if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     if (!isPromptElement(e.target)) return;
-    if (bypassNextSend) {
-      bypassNextSend = false;
+    const currentFingerprint = promptFingerprint(getInputText());
+    if (bypassAllowedFingerprint && bypassAllowedFingerprint === currentFingerprint) {
+      bypassAllowedFingerprint = null;
       return;
     }
 
@@ -508,8 +509,9 @@
       ? e.target.closest('button[data-testid=\"send-button\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
       : null;
     if (!button) return;
-    if (bypassNextSend) {
-      bypassNextSend = false;
+    const currentFingerprint = promptFingerprint(getInputText());
+    if (bypassAllowedFingerprint && bypassAllowedFingerprint === currentFingerprint) {
+      bypassAllowedFingerprint = null;
       return;
     }
 

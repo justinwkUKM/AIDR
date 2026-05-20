@@ -13,10 +13,29 @@
   const diagnosticsMetaEl = document.getElementById('diagnostics-meta');
   const diagnosticsGridEl = document.getElementById('diagnostics-grid');
 
+  function sanitizeEvent(evt) {
+    if (!evt || typeof evt !== 'object') return null;
+    const ts = Number(evt.ts);
+    if (!Number.isFinite(ts) || ts <= 0) return null;
+    const risk = Number(evt.risk);
+    const confidence = Number(evt.confidence);
+    return {
+      ts,
+      direction: String(evt.direction || 'unknown').slice(0, 24),
+      risk: Number.isFinite(risk) ? Math.max(0, Math.min(100, risk)) : 0,
+      severity: String(evt.severity || 'safe').slice(0, 16),
+      confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
+      matched_rule_ids: Array.isArray(evt.matched_rule_ids) ? evt.matched_rule_ids.map((v) => String(v).slice(0, 64)).slice(0, 12) : [],
+      categories: Array.isArray(evt.categories) ? evt.categories.map((v) => String(v).slice(0, 32)).slice(0, 8) : [],
+      evidence_spans: Array.isArray(evt.evidence_spans) ? evt.evidence_spans.map((v) => String(v).slice(0, 128)).slice(0, 8) : []
+    };
+  }
+
   function getEvents() {
     return new Promise((resolve) => {
       chrome.storage.local.get([STORAGE_KEY], (res) => {
-        resolve(Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : []);
+        const raw = Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [];
+        resolve(raw.map(sanitizeEvent).filter(Boolean));
       });
     });
   }
