@@ -1,7 +1,13 @@
 (function () {
   const ENABLED_KEY = 'aidr_logging_enabled';
+  const memoryStore = [];
+
+  function hasChromeStorage() {
+    return !!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local);
+  }
 
   function isLoggingEnabled() {
+    if (!hasChromeStorage()) return Promise.resolve(true);
     return new Promise((resolve) => {
       chrome.storage.local.get([ENABLED_KEY], (res) => {
         if (typeof res[ENABLED_KEY] !== 'boolean') {
@@ -14,12 +20,16 @@
   }
 
   function setLoggingEnabled(enabled) {
+    if (!hasChromeStorage()) return Promise.resolve();
     return new Promise((resolve) => {
       chrome.storage.local.set({ [ENABLED_KEY]: Boolean(enabled) }, () => resolve());
     });
   }
 
   function loadEvents() {
+    if (!hasChromeStorage()) {
+      return Promise.resolve(memoryStore.map(sanitizeEvent).filter(Boolean));
+    }
     return new Promise((resolve) => {
       const key = window.AIDR.config.storageKey;
       chrome.storage.local.get([key], (res) => {
@@ -63,6 +73,14 @@
     const enabled = await isLoggingEnabled();
     if (!enabled) return;
 
+    if (!hasChromeStorage()) {
+      const sanitized = sanitizeEvent(eventData);
+      if (!sanitized) return;
+      memoryStore.push(sanitized);
+      while (memoryStore.length > (window.AIDR?.config?.maxEvents || 1000)) memoryStore.shift();
+      return;
+    }
+
     // Prefer background worker serialization when available.
     if (chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
       try {
@@ -95,6 +113,10 @@
   }
 
   function clearEvents() {
+    if (!hasChromeStorage()) {
+      memoryStore.length = 0;
+      return Promise.resolve();
+    }
     const key = window.AIDR.config.storageKey;
     return new Promise((resolve) => {
       chrome.storage.local.set({ [key]: [] }, () => resolve());
