@@ -4,13 +4,41 @@
   "version": "0.1.0",
   "description": "Counts approximate input and output tokens on ChatGPT pages.",
   "permissions": ["storage"],
-  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+  "host_permissions": ["https://*/*", "http://*/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'"
+  },
+  "action": {
+    "default_title": "AIDR Dashboard",
+    "default_popup": "dashboard/dashboard.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["tokenizer.js", "content.js"],
-      "css": ["styles.css"],
+      "matches": ["https://*/*", "http://*/*"],
+      "js": [
+        "tokenizer.js",
+        "aidr/aidr-config.js",
+        "aidr/aidr-policy.js",
+        "aidr/aidr-rules.js",
+        "aidr/aidr-patterns.js",
+        "aidr/aidr-detector.js",
+        "aidr/aidr-scorer.js",
+        "aidr/aidr-logger.js",
+        "aidr/aidr-responder.js",
+        "aidr/aidr-core.js",
+        "content.js"
+      ],
+      "css": ["styles.css", "aidr/aidr-styles.css"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["aidr/page-transport-guard.js"],
+      "matches": ["https://*/*", "http://*/*"]
     }
   ]
 }

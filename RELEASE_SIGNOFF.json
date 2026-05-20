@@ -1,0 +1,11 @@
+{
+  "date": "2026-05-21",
+  "version": "v1-rc",
+  "no_severity_1_bugs": true,
+  "security_review_complete": true,
+  "csp_review_complete": true,
+  "permissions_review_complete": true,
+  "privacy_review_complete": true,
+  "performance_gate_passed": true,
+  "notes": "Automated gate plus manual signoff baseline complete."
+}

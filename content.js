@@ -13,25 +13,41 @@
   // DOM Reading Helpers
   // --------------------------
 
-  function getInputText() {
-    const selectors = [
-      'textarea',
-      'div[contenteditable="true"]',
-      '#prompt-textarea'
-    ];
+  function getComposerForm(el) {
+    if (el && el.closest) {
+      const fromTarget = el.closest('form[data-type="unified-composer"]');
+      if (fromTarget) return fromTarget;
+    }
+    return document.querySelector('form[data-type="unified-composer"]');
+  }
 
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      if (!el) continue;
+  function getInputText(form) {
+    const composerForm = form || getComposerForm(document.activeElement);
+    if (!composerForm) return '';
 
-      if (el.tagName === 'TEXTAREA') {
-        return el.value || '';
-      }
-
-      return el.innerText || '';
+    const candidates = [];
+    const promptTextarea = composerForm.querySelector(
+      'textarea[name="prompt-textarea"], #prompt-textarea'
+    );
+    if (promptTextarea && typeof promptTextarea.value === 'string') {
+      candidates.push(promptTextarea.value || '');
     }
 
-    return '';
+    const editable = composerForm.querySelector('div[contenteditable="true"]');
+    if (editable) {
+      candidates.push(editable.innerText || '');
+    }
+
+    const active = document.activeElement;
+    if (active && active.closest && active.closest('form[data-type="unified-composer"]')) {
+      if (typeof active.value === 'string') candidates.push(active.value || '');
+      if (typeof active.innerText === 'string') candidates.push(active.innerText || '');
+      if (typeof active.textContent === 'string') candidates.push(active.textContent || '');
+    }
+
+    return candidates
+      .map((s) => String(s || '').trim())
+      .sort((a, b) => b.length - a.length)[0] || '';
   }
 
   function getConversationMessages() {
@@ -225,6 +241,14 @@
   // Auto-detect model on load, allow manual override
   let selectedModel = detectCurrentModel();
   let manualModelOverride = false;
+  const aidrEngine = window.AIDR && window.AIDR.createEngine
+    ? window.AIDR.createEngine()
+    : null;
+  if (window.AIDR && window.AIDR.policy && window.AIDR.policy.init) {
+    window.AIDR.policy.init();
+  }
+  const sendRiskHistory = [];
+  const cooldownByFingerprint = new Map();
 
   let panelVisible = true;
 
@@ -277,6 +301,12 @@
       <div class="ctc-topics">🔑 Last: <span id="ctc-last-topics">--</span></div>
       <div class="ctc-topics">🔑 Overall: <span id="ctc-overall-topics">--</span></div>
       <div>"paynet" mentions: <span id="ctc-paynet">0</span></div>
+      <div class="ctc-topics">AIDR mode: <span id="ctc-aidr-mode-state">enforcement</span></div>
+      <div class="ctc-topics">
+        <button id="ctc-aidr-mode-toggle" type="button">Toggle Mode</button>
+        <button id="ctc-aidr-pause-15" type="button">Pause</button>
+        <button id="ctc-aidr-resume" type="button">Resume</button>
+      </div>
     `;
     document.body.appendChild(panel);
 
@@ -310,9 +340,230 @@
       manualModelOverride = true;
       updatePanel();
     });
+
+    const modeStateEl = document.getElementById('ctc-aidr-mode-state');
+    const modeToggleBtn = document.getElementById('ctc-aidr-mode-toggle');
+    const pauseBtn = document.getElementById('ctc-aidr-pause-15');
+    const resumeBtn = document.getElementById('ctc-aidr-resume');
+
+    async function refreshPolicyState() {
+      if (!window.AIDR || !window.AIDR.policy || !modeStateEl) return;
+      await window.AIDR.policy.init();
+      const st = window.AIDR.policy.getStateSync();
+      modeStateEl.textContent = st.mode + (window.AIDR.policy.isSessionPaused() ? ' (paused)' : '');
+    }
+
+    function downloadTextFile(filename, text, mime) {
+      const blob = new Blob([text], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    if (modeToggleBtn) {
+      modeToggleBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy) return;
+        const st = window.AIDR.policy.getStateSync();
+        await window.AIDR.policy.setMode(st.mode === 'enforcement' ? 'shadow' : 'enforcement');
+        await refreshPolicyState();
+      });
+    }
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy) return;
+        await window.AIDR.policy.pauseSession(15);
+        await refreshPolicyState();
+      });
+    }
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', async () => {
+        if (!window.AIDR || !window.AIDR.policy) return;
+        await window.AIDR.policy.resumeSession();
+        await refreshPolicyState();
+      });
+    }
+    refreshPolicyState();
+  }
+
+  function isPromptElement(el) {
+    if (!el) return false;
+    if (el.matches && el.matches('textarea, #prompt-textarea, [contenteditable=\"true\"]')) return true;
+    if (el.closest && el.closest('textarea, #prompt-textarea, [contenteditable=\"true\"]')) return true;
+    return false;
+  }
+
+  function isComposerContext(el) {
+    if (!el || !el.closest) return false;
+    return !!el.closest('form[data-type=\"unified-composer\"], #thread-bottom-container');
+  }
+
+  function promptFingerprint(text) {
+    return String(text || '').trim().slice(0, 140);
+  }
+
+  function detectionFingerprint(result) {
+    const ids = result.detections.map((d) => d.id).sort().join(',');
+    return `${result.severity}|${ids}`;
+  }
+
+  function evaluatePromptForEnforcement(text) {
+    if (!window.AIDR || !window.AIDR.detect || !window.AIDR.score) {
+      return { severity: 'safe', risk: 0, detections: [] };
+    }
+    const detections = window.AIDR.detect(text);
+    const score = window.AIDR.score(detections, sendRiskHistory);
+    return {
+      severity: score.severity,
+      risk: score.risk,
+      confidence: score.confidence,
+      detections
+    };
+  }
+
+  function persistEnforcementEvent(direction, result) {
+    if (!window.AIDR || !window.AIDR.logger || !window.AIDR.logger.logEvent) return;
+    if (result.severity === 'safe') return;
+    window.AIDR.logger.logEvent({
+      ts: Date.now(),
+      direction,
+      risk: result.risk,
+      severity: result.severity,
+      confidence: result.confidence || 0,
+      matched_rule_ids: result.detections.map((d) => d.id),
+      categories: Array.from(new Set(result.detections.map((d) => d.category))),
+      evidence_spans: result.detections.map((d) => d.evidence)
+    });
+  }
+
+  function maybeBlockPromptSend(form) {
+    const promptText = getInputText(form);
+    const fp = promptFingerprint(promptText);
+    if (!fp) return false;
+
+    const result = evaluatePromptForEnforcement(promptText);
+    sendRiskHistory.push({ ts: Date.now(), severity: result.severity, risk: result.risk });
+    if (sendRiskHistory.length > 50) sendRiskHistory.shift();
+
+    if (window.AIDR && window.AIDR.responder) {
+      window.AIDR.responder.render({
+        severity: result.severity,
+        risk: result.risk,
+        detections: result.detections
+      });
+    }
+
+    const hasHardBlockCategory = result.detections.some((d) =>
+      d && (d.category === 'prompt_injection' || d.category === 'jailbreak')
+    );
+    const shouldBlockBySeverity = result.severity === 'high' || result.severity === 'critical';
+    if (!shouldBlockBySeverity && !hasHardBlockCategory) {
+      return false;
+    }
+
+    if (!window.AIDR || !window.AIDR.policy || !window.AIDR.policy.isEnforcementActive()) {
+      return false;
+    }
+
+    const now = Date.now();
+    const cooldownKey = detectionFingerprint(result);
+    const until = cooldownByFingerprint.get(cooldownKey) || 0;
+    if (now < until) {
+      result.suppressModal = true;
+      return result;
+    }
+    cooldownByFingerprint.set(cooldownKey, now + (window.AIDR.config.cooldownMs || 45000));
+
+    persistEnforcementEvent('prompt', result);
+    return result;
+  }
+
+  function handleBlockedPrompt(result) {
+    if (!window.AIDR || !window.AIDR.responder || !window.AIDR.responder.showBlockedNotice) return;
+    window.AIDR.responder.showBlockedNotice(result);
+  }
+
+  function installTransportGuard() {
+    if (window.__aidrTransportGuardInstalled) return;
+    window.__aidrTransportGuardInstalled = true;
+
+    const script = document.createElement('script');
+    if (!chrome || !chrome.runtime || !chrome.runtime.getURL) return;
+    script.src = chrome.runtime.getURL('aidr/page-transport-guard.js');
+    (document.documentElement || document.head || document.body).appendChild(script);
+    script.remove();
   }
 
   // Keyboard shortcut: Ctrl+Shift+T to toggle panel
+  installTransportGuard();
+
+  window.addEventListener('aidr:transport-blocked', () => {
+    handleBlockedPrompt({
+      severity: 'critical',
+      risk: 100,
+      confidence: 1,
+      detections: [{
+        id: 'transport_pi_block',
+        category: 'prompt_injection',
+        message: 'Blocked at transport layer.'
+      }]
+    });
+  }, true);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
+    if (e.isComposing) return;
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    const active = document.activeElement;
+    const inComposer = isComposerContext(e.target) || isComposerContext(active);
+    if (!inComposer && !isPromptElement(e.target) && !isPromptElement(active)) return;
+
+    const form = getComposerForm(e.target) || getComposerForm(active);
+    if (!form) return;
+    const enforcementResult = maybeBlockPromptSend(form);
+    if (enforcementResult && enforcementResult.severity) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleBlockedPrompt(enforcementResult);
+    }
+  }, true);
+
+  window.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
+    const button = e.target && e.target.closest
+      ? e.target.closest('#composer-submit-button, button[data-testid=\"send-button\"], button[data-testid*=\"send\"], button[aria-label*=\"Send\"], button[aria-label*=\"send\"]')
+      : null;
+    if (!button) return;
+    const form = getComposerForm(button);
+    if (!form) return;
+
+    const enforcementResult = maybeBlockPromptSend(form);
+    if (enforcementResult && enforcementResult.severity) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleBlockedPrompt(enforcementResult);
+    }
+  }, true);
+
+  window.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (!form || !form.matches || !form.matches('form[data-type=\"unified-composer\"]')) return;
+    const enforcementResult = maybeBlockPromptSend(form);
+    if (enforcementResult && enforcementResult.severity) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleBlockedPrompt(enforcementResult);
+    }
+  }, true);
+
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'T') {
       e.preventDefault();
@@ -328,7 +579,15 @@
     // Fetch messages once and reuse for all analyses
     const messages = getConversationMessages();
     const lastMsg = messages.length ? messages[messages.length - 1].text : '';
+    const lastRole = messages.length ? messages[messages.length - 1].role : '';
     const fullText = messages.map(m => m.text).join(' ');
+
+    if (aidrEngine) {
+      aidrEngine.analyzePrompt(promptText);
+      if (lastRole === 'assistant') {
+        aidrEngine.analyzeResponse(lastMsg);
+      }
+    }
 
     const promptEl = document.getElementById('ctc-prompt');
     const userEl = document.getElementById('ctc-user');

@@ -1,0 +1,36 @@
+name: AIDR CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feat/**
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Manifest JSON parse
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
+      - name: JS syntax checks
+        run: |
+          node --check content.js
+          node --check aidr/aidr-config.js
+          node --check aidr/aidr-policy.js
+          node --check aidr/aidr-rules.js
+          node --check aidr/aidr-patterns.js
+          node --check aidr/aidr-detector.js
+          node --check aidr/aidr-scorer.js
+          node --check aidr/aidr-logger.js
+          node --check aidr/aidr-responder.js
+          node --check aidr/aidr-core.js
+          node --check dashboard/dashboard.js
+      - name: Rule harness
+        run: node scripts/aidr-rule-harness.js tests/fixtures/custom-rules.json
+      - name: Release gate
+        run: node scripts/aidr-release-gate.js

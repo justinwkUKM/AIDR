@@ -9,13 +9,43 @@ AIDR (AI Detection and Response) is a Chrome extension security layer focused on
 - `content.js`: content script logic
 - `styles.css`: extension styles
 - `tokenizer.js`: tokenizer and token counting logic
+- `aidr/`: AIDR runtime modules (policy, rules, detector, scorer, logger, responder, core)
+- `dashboard/`: extension popup dashboard for events, diagnostics, and policy controls
+- `scripts/`: local benchmark and rule harness tools
+- `tests/fixtures/`: local fixture datasets for harness workflows
 
 ## Current Status
 
-This repository currently contains the baseline extension files and a revised implementation plan for AIDR.
+AIDR currently includes local detection/scoring, shadow/enforcement policy controls, allowlist/mute/session pause controls, diagnostics ingestion, and custom-rule extensibility.
 
-## Next Steps
+## Performance Harness
 
-1. Implement `v1` detection primitives and scoring from `AIDR_PLAN.md`.
-2. Add test fixtures and regression tests.
-3. Add response UI and logging controls behind feature flags.
+- Local synthetic benchmark script:
+  - `node scripts/aidr-bench.js`
+  - Optional iterations: `node scripts/aidr-bench.js 5000`
+- Runtime metrics are also available from the content-script engine via:
+  - `window.AIDR.createEngine().getPerformanceStats()`
+
+## Diagnostics Dataset Schema (Dashboard)
+
+- Upload JSON with shape:
+```json
+{
+  "samples": [
+    {
+      "predicted_categories": ["prompt_injection"],
+      "actual_categories": ["prompt_injection"]
+    }
+  ]
+}
+```
+- Dashboard computes per-category `precision`, `recall`, `f1`, and `false_positive_rate`.
+
+## Custom Rule Harness
+
+- Register plugin-style custom rules without editing core detector logic.
+- Run harness:
+  - `node scripts/aidr-rule-harness.js tests/fixtures/custom-rules.json`
+- Fixture format supports:
+  - `rules` list (regex-based custom rules)
+  - `cases` list with expected `rule_ids`
