@@ -2,6 +2,19 @@
 
 AIDR (AI Detection and Response) is a Chrome extension security layer focused on reducing risky AI-chat interactions, with local-first detection and explainable alerts.
 
+## Highlights
+
+- New card-based popup dashboard UI (`dashboard/`) with:
+  - threat summary and risk score
+  - confidence trend sparkline
+  - block/allow once/mute/pause actions
+  - shadow/enforce mode switch
+  - diagnostics, logs, allowlist, rules quick panels
+- Enforcement includes:
+  - pre-send interception (keyboard/click/submit paths)
+  - transport-layer guard for conversation requests
+- Scope currently set to all HTTP/S sites in `manifest.json`.
+
 ## Repository Contents
 
 - `AIDR_PLAN.md`: phased implementation plan (`v1`/`v2`/`v3`)
@@ -17,6 +30,17 @@ AIDR (AI Detection and Response) is a Chrome extension security layer focused on
 ## Current Status
 
 AIDR currently includes local detection/scoring, shadow/enforcement policy controls, allowlist/mute/session pause controls, diagnostics ingestion, and custom-rule extensibility.
+
+## Quick Start (Chrome)
+
+1. Open `chrome://extensions`
+2. Enable `Developer mode`
+3. Click `Load unpacked`
+4. Select this folder:
+   - `/Users/waqas.obeidy/Documents/Development/Chrome/AIDR`
+5. Pin extension and open popup from toolbar.
+
+If you already loaded it before, click `Reload` after pulling new changes.
 
 ## Performance Harness
 
