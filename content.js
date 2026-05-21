@@ -92,11 +92,29 @@
 
   const ACTIVE_PROFILE = getSiteProfile();
 
+  function deepQuerySelector(selector, root = document) {
+    try {
+      const found = root.querySelector(selector);
+      if (found) return found;
+    } catch (_) {}
+
+    try {
+      const all = root.querySelectorAll('*');
+      for (const el of all) {
+        if (el.shadowRoot) {
+          const found = deepQuerySelector(selector, el.shadowRoot);
+          if (found) return found;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   function firstQuery(selectors, root) {
     const scope = root || document;
     for (const selector of selectors) {
       try {
-        const found = scope.querySelector(selector);
+        const found = deepQuerySelector(selector, scope);
         if (found) return found;
       } catch (_) {}
     }
@@ -147,7 +165,7 @@
     // Otherwise, check input selectors in strict order of priority
     for (const selector of ACTIVE_PROFILE.inputSelectors) {
       try {
-        const node = composerForm.querySelector(selector);
+        const node = deepQuerySelector(selector, composerForm);
         if (node) {
           if (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT') {
             return String(node.value || '').trim();
@@ -167,7 +185,23 @@
   // --------------------------
   function isAidrEnabledHost() {
     const host = window.location.hostname;
-    return host === 'chatgpt.com' || host === 'chat.openai.com' || host.endsWith('.chatgpt.com') || host.endsWith('.chat.openai.com');
+    // 1. Direct matching from profile hosts
+    const known = SITE_PROFILES.some((p) => (p.hosts || []).some((h) => hostMatches(h, host)));
+    if (known) return true;
+
+    // 2. URL heuristics (contains ask/chat/ai/perplexity/grok/gemini/claude/copilot)
+    const urlHeuristic = /\b(?:chat|ask|ai|copilot|perplexity|gemini|claude|grok)\b/i.test(window.location.href);
+    if (urlHeuristic) return true;
+
+    // 3. DOM structural heuristics (has a textarea/contenteditable and looks like a chatbot input)
+    try {
+      const hasInput = !!document.querySelector('textarea, [contenteditable="true"]');
+      const hasAiMeta = !!document.querySelector('[role="textbox"]') || 
+                         /message|prompt|chat|ask/i.test(document.body.innerText.slice(0, 5000));
+      return hasInput && hasAiMeta;
+    } catch (_) {
+      return false;
+    }
   }
 
   const aidrEngine = (isAidrEnabledHost() && window.AIDR && window.AIDR.createEngine)
@@ -179,6 +213,7 @@
   }
 
   const sendRiskHistory = [];
+  const overriddenFingerprints = new Set();
   const cooldownByFingerprint = new Map();
 
   // Tab Scan Telemetry
@@ -498,6 +533,11 @@
     const fp = promptFingerprint(promptText);
     if (!fp) return false;
 
+    if (overriddenFingerprints.has(fp)) {
+      overriddenFingerprints.delete(fp);
+      return false; // Skip block since user overrode it
+    }
+
     promptsScannedCount++;
     const result = evaluatePromptForEnforcement(promptText);
     sendRiskHistory.push({ ts: Date.now(), severity: result.severity, risk: result.risk });
@@ -811,7 +851,67 @@
       subtree: true,
       characterData: true
     });
-  }
+  // Handle custom bypass/override completion event from aidr-responder.js
+  window.addEventListener('aidr:override-completed', () => {
+    const text = getInputText();
+    const fp = promptFingerprint(text);
+    if (fp) {
+      overriddenFingerprints.add(fp);
+
+      // Re-trigger submit! Find send button inside the form and click it
+      const form = getComposerForm(document.activeElement);
+      const sendBtn = form ? firstQuery(ACTIVE_PROFILE.sendSelectors, form) : firstQuery(ACTIVE_PROFILE.sendSelectors, document);
+      if (sendBtn) {
+        sendBtn.click();
+      }
+    }
+  });
+
+  // Handle sensitive data inline sanitization event
+  window.addEventListener('aidr:sanitize-input', (e) => {
+    const detail = e.detail || {};
+    const promptText = detail.promptText || getInputText();
+    if (!promptText) return;
+
+    let sanitized = promptText;
+
+    // Redaction patterns matching standard PII / Secrets
+    const emailRe = /[\w.-]+@[\w.-]+\.[\w.-]+/g;
+    const phoneRe = /\b(?:\+?\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g;
+    const creditCardRe = /\b(?:\d[ -]*?){13,16}\b/g;
+    const privateKeyRe = /-----BEGIN\s+(?:RSA|EC|DSA|OPENSSH)?\s*PRIVATE\s+KEY-----[\s\S]+?-----END\s+(?:RSA|EC|DSA|OPENSSH)?\s*PRIVATE\s+KEY-----/g;
+    const apiKeyRe = /\b(?:sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,})\b/g;
+
+    sanitized = sanitized.replace(privateKeyRe, '[PRIVATE KEY REDACTED]');
+    sanitized = sanitized.replace(apiKeyRe, (m) => m.slice(0, 3) + '...[API KEY REDACTED]');
+    sanitized = sanitized.replace(creditCardRe, '[CARD REDACTED]');
+    sanitized = sanitized.replace(emailRe, '[EMAIL REDACTED]');
+    sanitized = sanitized.replace(phoneRe, '[PHONE REDACTED]');
+
+    // Find the composer input element
+    const inputEl = firstQuery(ACTIVE_PROFILE.inputSelectors, document);
+    if (inputEl) {
+      if (inputEl.tagName === 'TEXTAREA' || inputEl.tagName === 'INPUT') {
+        inputEl.value = sanitized;
+      } else if (inputEl.getAttribute('contenteditable') === 'true' || inputEl.contentEditable === 'true') {
+        inputEl.innerText = sanitized;
+      }
+
+      // Dispatch 'input' and 'change' events to let the site frameworks (React/Vue/etc.) update
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Focus back on the input
+      inputEl.focus();
+
+      // Log the action to the feed
+      logIncidentToFeed('safe', [{
+        category: 'sanitization',
+        message: '✓ In-place prompt sanitization completed successfully.'
+      }]);
+      updatePanelValues('safe', 0);
+    }
+  });
 
   // Initialize UI Elements
   if (document.body) {

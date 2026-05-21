@@ -201,6 +201,23 @@
 
     const statusText = blocked ? '🚫 BLOCKED' : '⚡ DETECTED';
 
+    const isCriticalConfirm = blocked && window.AIDR && window.AIDR.config && window.AIDR.config.criticalOverrideMode === 'typed_confirm';
+
+    const overrideBoxHtml = isCriticalConfirm
+      ? `<div class="aidr-override-confirm-box" id="aidr-override-box">
+          <span class="aidr-override-label">Type "SEND ANYWAY" to override this block:</span>
+          <div class="aidr-override-input-row">
+            <input type="text" class="aidr-override-input" id="aidr-override-input" placeholder="Type here..." />
+            <button class="aidr-btn-confirm-override" id="aidr-btn-confirm-override" disabled type="button">Submit Override</button>
+          </div>
+         </div>`
+      : '';
+
+    const hasSensitiveData = result.detections && result.detections.some(d => d.category === 'sensitive_data');
+    const sanitizeBtnHtml = hasSensitiveData
+      ? `<button class="aidr-btn-sanitize" id="aidr-btn-sanitize" type="button">Sanitize Input</button>`
+      : '';
+
     banner.innerHTML = `
       <div class="aidr-banner-header" id="aidr-banner-header">
         <span class="aidr-banner-title">${sevIcon} AIDR Security Alert</span>
@@ -220,21 +237,65 @@
         </div>
         <div class="aidr-issues">${itemsHtml}${moreText}</div>
       </div>
+      ${overrideBoxHtml}
       <div class="aidr-banner-footer" id="aidr-banner-footer">
+        ${sanitizeBtnHtml}
         <button class="aidr-btn-ghost" id="aidr-btn-whitelist" type="button">Whitelist This</button>
         <button class="aidr-btn-ghost" id="aidr-btn-dismiss" type="button">Dismiss</button>
       </div>
     `;
 
-    // Wire up dismiss button (per-detection dismiss)
     const fp = detectionFingerprint(result);
+
+    // Wire up dismiss / cancel button (standard dismiss)
     banner.querySelectorAll('[class="aidr-dismiss"], #aidr-btn-dismiss').forEach((btn) => {
       btn.addEventListener('click', () => {
-        dismissedFingerprints.add(fp);
+        // If it's a critical path, standard dismiss acts as cancel (doesn't whitelist or bypass)
+        if (!blocked) {
+          dismissedFingerprints.add(fp);
+        }
         hideBanner();
         hideIndicator();
       });
     });
+
+    // Wire up typed confirm override block if active
+    if (isCriticalConfirm) {
+      const confirmInput = banner.querySelector('#aidr-override-input');
+      const confirmBtn = banner.querySelector('#aidr-btn-confirm-override');
+      if (confirmInput && confirmBtn) {
+        confirmInput.addEventListener('input', () => {
+          const val = confirmInput.value.trim();
+          if (val === 'SEND ANYWAY') {
+            confirmBtn.disabled = false;
+          } else {
+            confirmBtn.disabled = true;
+          }
+        });
+        confirmBtn.addEventListener('click', () => {
+          dismissedFingerprints.add(fp);
+          hideBanner();
+          hideIndicator();
+          // Dispatch custom event to notify content.js that override was completed
+          window.dispatchEvent(new CustomEvent('aidr:override-completed', { detail: { fingerprint: fp } }));
+        });
+      }
+    }
+
+    // Wire up sanitize button
+    const sanitizeBtn = banner.querySelector('#aidr-btn-sanitize');
+    if (sanitizeBtn) {
+      sanitizeBtn.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('aidr:sanitize-input', {
+          detail: {
+            detections: result.detections,
+            promptText: window._aidrLastPrompt || ''
+          }
+        }));
+        hideBanner();
+        hideIndicator();
+      });
+    }
 
     // Wire up collapse/expand
     const header = banner.querySelector('#aidr-banner-header');
@@ -266,9 +327,11 @@
       });
     }
 
-    // Auto-collapse after 8 seconds
-    if (collapseTimer) clearTimeout(collapseTimer);
-    collapseTimer = setTimeout(() => collapseBanner(banner), 8000);
+    // Auto-collapse after 8 seconds (except for blocked critical notices)
+    if (!blocked) {
+      if (collapseTimer) clearTimeout(collapseTimer);
+      collapseTimer = setTimeout(() => collapseBanner(banner), 8000);
+    }
   }
 
   function collapseBanner(banner) {

@@ -5,7 +5,7 @@
 - **v1 Core Protection**: ✅ Complete (May 2026)
 - **v2 Quality + Observability**: ✅ Complete
 - **v3 Extensibility + Hardening**: ✅ Complete
-- **Next: v4 — Universal Coverage & Advanced Detection** — In Planning
+- **v4 Universal Coverage & Advanced Detection**: ✅ Complete (May 2026)
 
 ---
 

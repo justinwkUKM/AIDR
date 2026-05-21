@@ -463,3 +463,77 @@
   background: #b91c1c;
   color: #fff;
 }
+
+/* ─── Override Box & Sanitize UI ────────────────────────────────────────── */
+.aidr-override-confirm-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  margin: 6px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: aidr-fade-in 0.2s ease;
+}
+
+.aidr-override-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.aidr-override-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.aidr-override-input {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.aidr-override-input:focus {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.aidr-btn-confirm-override {
+  background: #dc2626;
+  border: none;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.aidr-btn-confirm-override:not(:disabled) {
+  opacity: 1;
+}
+
+.aidr-btn-sanitize {
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.aidr-btn-sanitize:hover {
+  background: rgba(59, 130, 246, 0.45);
+  border-color: rgba(96, 165, 250, 0.7);
+}
