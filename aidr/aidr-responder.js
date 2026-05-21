@@ -43,6 +43,23 @@
     beh_repetition:  { icon: '🔁', label: 'Repetition Pattern', hint: 'High repetition detected' },
     // Transport guard
     transport_pi_block: { icon: '🛑', label: 'Transport Block', hint: 'Blocked at network layer' },
+    // Response leakage
+    resp_system_echo:      { icon: '🔍', label: 'System Prompt Leak', hint: 'AI may be echoing its system prompt' },
+    resp_instruction_leak: { icon: '🔍', label: 'Instruction Leak',   hint: 'AI may be leaking its instructions' },
+    resp_prompt_reflection: { icon: '🔍', label: 'Prompt Reflection', hint: 'AI appears to be reflecting its prompt' },
+    resp_suspicious_url:   { icon: '🔗', label: 'Suspicious URL',     hint: 'Response contains a suspicious URL' },
+    resp_credential_gen:   { icon: '🔑', label: 'Credential in Response', hint: 'Response contains generated credentials' },
+    resp_connstring:       { icon: '🗄️', label: 'Connection String',  hint: 'Response contains a connection string' },
+    resp_pii_email:        { icon: '📧', label: 'Email in Response',  hint: 'AI response contains an email address' },
+    resp_private_key:      { icon: '🔑', label: 'Key in Response',    hint: 'AI response contains a private key' },
+    // PII expansions
+    pii_ssn:               { icon: '🆔', label: 'SSN Detected',       hint: 'US Social Security Number pattern detected' },
+    // Secrets expansions
+    secret_conn_1:         { icon: '🗄️', label: 'DB Connection',      hint: 'Database connection string detected' },
+    secret_conn_2:         { icon: '🗄️', label: 'DB Connection',      hint: 'MSSQL connection string detected' },
+    // File paths
+    pii_filepath_1:        { icon: '📁', label: 'File Path',          hint: 'Internal file path detected' },
+    pii_filepath_2:        { icon: '📁', label: 'SSH Path',           hint: 'SSH-style path detected' },
   };
 
   function getLabel(ruleId) {

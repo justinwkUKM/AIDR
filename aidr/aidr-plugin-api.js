@@ -17,7 +17,8 @@
       'jailbreak',
       'exfiltration',
       'harmful_content',
-      'behavioral'
+      'behavioral',
+      'response_leakage'
     ],
     severities: ['low', 'medium', 'high', 'critical'],
     actions: ['warn', 'edit', 'block', 'log']

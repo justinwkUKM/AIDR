@@ -118,6 +118,17 @@
     return firstQuery(ACTIVE_PROFILE.formSelectors, document);
   }
 
+  function isPromptElement(el) {
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return true;
+    if (el.getAttribute('contenteditable') === 'true' || el.contentEditable === 'true') return true;
+    return false;
+  }
+
+  function isComposerContext(el) {
+    return el && !!getComposerForm(el);
+  }
+
   function getInputText(form) {
     const composerForm = form || getComposerForm(document.activeElement);
     if (!composerForm) return '';
@@ -682,15 +693,99 @@
   }
 
   // --------------------------
+  // Paste Interception
+  // --------------------------
+  function handlePaste(e) {
+    if (!isAidrEnabledHost()) return;
+    if (!window.AIDR || !window.AIDR.detect) return;
+
+    const clipboardText = (e.clipboardData || window.clipboardData || '').getData
+      ? (e.clipboardData || window.clipboardData).getData('text')
+      : '';
+
+    if (!clipboardText || clipboardText.length < 5) return;
+
+    // Only scan if pasting into a composer input
+    const target = e.target;
+    if (!isPromptElement(target) && !isComposerContext(target)) return;
+
+    const detections = window.AIDR.detect(clipboardText);
+    if (!detections || !detections.length) return;
+
+    const hasSensitive = detections.some(d =>
+      d.category === 'sensitive_data' || d.severity_base === 'critical'
+    );
+
+    if (hasSensitive) {
+      promptsScannedCount++;
+      warningCount++;
+      logIncidentToFeed('high', detections.map(d => ({
+        ...d,
+        message: '⚡ PASTE: ' + d.message
+      })));
+      updatePanelValues('high', 70);
+
+      // Show responder warning
+      if (window.AIDR && window.AIDR.responder) {
+        window.AIDR.responder.render({
+          severity: 'high',
+          risk: 70,
+          detections: detections,
+          _promptText: clipboardText
+        });
+      }
+    }
+  }
+
+  // Install paste listener on the whole document (captures paste in any input)
+  document.addEventListener('paste', handlePaste, true);
+
+  // --------------------------
+  // Response-Side Scanning
+  // --------------------------
+  let lastScannedResponseText = '';
+
+  function scanLatestResponse() {
+    if (!isAidrEnabledHost()) return;
+    if (!window.AIDR || !window.AIDR.detectResponse) return;
+
+    // Find the last assistant message on the page
+    const messageNodes = document.querySelectorAll('[data-message-author-role="assistant"]');
+    if (!messageNodes.length) return;
+
+    const lastNode = messageNodes[messageNodes.length - 1];
+    const responseText = (lastNode.innerText || '').trim();
+
+    // Skip if we already scanned this exact text
+    if (!responseText || responseText === lastScannedResponseText) return;
+    lastScannedResponseText = responseText;
+
+    const detections = window.AIDR.detectResponse(responseText);
+    if (!detections || !detections.length) return;
+
+    warningCount += detections.length;
+    logIncidentToFeed('medium', detections.map(d => ({
+      ...d,
+      message: '📥 RESPONSE: ' + d.message
+    })));
+    updatePanelValues('medium', 50);
+  }
+
+  // --------------------------
   // DOM Observation
   // --------------------------
   function startObserver() {
     let debounceTimer;
     let typingIdleTimer;
+    let responseDebounceTimer;
 
     const observer = new MutationObserver(() => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(updatePanel, 300);
+
+      // Response scanning (debounced at 2s to wait for streaming to settle)
+      clearTimeout(responseDebounceTimer);
+      responseDebounceTimer = setTimeout(scanLatestResponse, 2000);
 
       clearTimeout(typingIdleTimer);
       typingIdleTimer = setTimeout(() => {
@@ -729,3 +824,4 @@
     });
   }
 })();
+

@@ -1,6 +1,6 @@
 (function () {
   const config = {
-    version: '1.0.0-v1',
+    version: '2.0.0-v4',
     enabled: true,
     mode: 'enforcement',
     criticalOverrideMode: 'typed_confirm',
@@ -21,6 +21,7 @@
       sensitive_data: 85,
       prompt_injection: 75,
       jailbreak: 70,
+      response_leakage: 60,
       exfiltration: 55,
       harmful_content: 45,
       behavioral: 35
