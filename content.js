@@ -122,27 +122,33 @@
     const composerForm = form || getComposerForm(document.activeElement);
     if (!composerForm) return '';
 
-    const candidates = [];
+    // Prioritize active element if it's an actual input/textarea inside the composer
+    const active = document.activeElement;
+    if (active && active.closest && getComposerForm(active)) {
+      if (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') {
+        return String(active.value || '').trim();
+      }
+      if (active.getAttribute('contenteditable') === 'true' || active.contentEditable === 'true') {
+        return String(active.innerText || '').trim();
+      }
+    }
+
+    // Otherwise, check input selectors in strict order of priority
     for (const selector of ACTIVE_PROFILE.inputSelectors) {
       try {
         const node = composerForm.querySelector(selector);
-        if (!node) continue;
-        if (typeof node.value === 'string') candidates.push(node.value || '');
-        if (typeof node.innerText === 'string') candidates.push(node.innerText || '');
-        if (typeof node.textContent === 'string') candidates.push(node.textContent || '');
+        if (node) {
+          if (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT') {
+            return String(node.value || '').trim();
+          }
+          if (node.getAttribute('contenteditable') === 'true' || node.contentEditable === 'true') {
+            return String(node.innerText || '').trim();
+          }
+        }
       } catch (_) {}
     }
 
-    const active = document.activeElement;
-    if (active && active.closest && getComposerForm(active)) {
-      if (typeof active.value === 'string') candidates.push(active.value || '');
-      if (typeof active.innerText === 'string') candidates.push(active.innerText || '');
-      if (typeof active.textContent === 'string') candidates.push(active.textContent || '');
-    }
-
-    return candidates
-      .map((s) => String(s || '').trim())
-      .sort((a, b) => b.length - a.length)[0] || '';
+    return '';
   }
 
   // --------------------------
