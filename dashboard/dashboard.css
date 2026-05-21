@@ -247,3 +247,58 @@ input, select { padding: 8px 10px; width: 100%; }
   grid-template-columns: 1fr auto;
   gap: 8px;
 }
+
+/* PDF Export - Print Styles */
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  .app {
+    width: 100%;
+    max-height: none;
+    padding: 0;
+  }
+
+  .topbar, .threat-card, .info-card, .policy, .panel, .quick-grid, .action-row {
+    box-shadow: none;
+    border: 1px solid #ccc;
+    break-inside: avoid;
+  }
+
+  .action-row, .quick-grid, .mode-switch, .filters {
+    display: none !important;
+  }
+
+  .timeline {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .event {
+    break-inside: avoid;
+    border: 1px solid #ddd;
+  }
+
+  .sparkline .bar {
+    background: #666 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .risk-score, .conf-value {
+    color: #000 !important;
+  }
+
+  .badge {
+    border: 1px solid #999 !important;
+    color: #000 !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+}
