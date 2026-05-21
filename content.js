@@ -851,6 +851,8 @@
       subtree: true,
       characterData: true
     });
+  }
+
   // Handle custom bypass/override completion event from aidr-responder.js
   window.addEventListener('aidr:override-completed', () => {
     const text = getInputText();
