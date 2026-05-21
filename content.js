@@ -1,14 +1,7 @@
-/**
- * Content script for ChatGPT Visible Token Counter.
- * Reads the input box, observes conversation messages, counts tokens,
- * and displays them in a floating panel.
- */
-
-(function () {
-  // Prevent double injection
-  if (window.__tokenCounterInitialized) return;
-  window.__tokenCounterInitialized = true;
-
+(() => {
+  // --------------------------
+  // Site Profiles Setup
+  // --------------------------
   const DEFAULT_PROFILE = {
     formSelectors: [
       'form[data-type="unified-composer"]',
@@ -105,9 +98,7 @@
       try {
         const found = scope.querySelector(selector);
         if (found) return found;
-      } catch (_) {
-        // Ignore invalid selectors on older engines.
-      }
+      } catch (_) {}
     }
     return null;
   }
@@ -115,16 +106,13 @@
   // --------------------------
   // DOM Reading Helpers
   // --------------------------
-
   function getComposerForm(el) {
     if (el && el.closest) {
       for (const selector of ACTIVE_PROFILE.formSelectors) {
         try {
           const fromTarget = el.closest(selector);
           if (fromTarget) return fromTarget;
-        } catch (_) {
-          // Ignore invalid selector for this browser.
-        }
+        } catch (_) {}
       }
     }
     return firstQuery(ACTIVE_PROFILE.formSelectors, document);
@@ -142,9 +130,7 @@
         if (typeof node.value === 'string') candidates.push(node.value || '');
         if (typeof node.innerText === 'string') candidates.push(node.innerText || '');
         if (typeof node.textContent === 'string') candidates.push(node.textContent || '');
-      } catch (_) {
-        // Ignore invalid selector.
-      }
+      } catch (_) {}
     }
 
     const active = document.activeElement;
@@ -159,199 +145,9 @@
       .sort((a, b) => b.length - a.length)[0] || '';
   }
 
-  function getConversationMessages() {
-    const messageNodes = document.querySelectorAll('[data-message-author-role]');
-
-    return Array.from(messageNodes).map((node) => ({
-      role: node.getAttribute('data-message-author-role'),
-      text: node.innerText || '',
-    }));
-  }
-
-  function calculateTotals() {
-    const messages = getConversationMessages();
-
-    let userTokens = 0;
-    let assistantTokens = 0;
-    let paynetCount = 0;
-
-    for (const message of messages) {
-      const count = window.estimateTokens(message.text);
-
-      if (message.role === 'user') {
-        userTokens += count;
-      }
-
-      if (message.role === 'assistant') {
-        assistantTokens += count;
-      }
-
-      // Count "paynet" occurrences (case-insensitive, with or without dash)
-      paynetCount += window.countPaynetOccurrences(message.text);
-    }
-
-    return {
-      userTokens,
-      assistantTokens,
-      totalTokens: userTokens + assistantTokens,
-      paynetCount,
-    };
-  }
-
   // --------------------------
-  // Model Detection
+  // AIDR Security State
   // --------------------------
-
-  /**
-   * Mapping from model names shown in ChatGPT UI to our MODEL_PRICING keys.
-   */
-  const MODEL_NAME_MAP = {
-    'gpt-5.5': 'gpt-5.5',
-    'gpt-5': 'gpt-5',
-    'gpt 5.5': 'gpt-5.5',
-    'gpt 5': 'gpt-5',
-    'gpt-4o': 'gpt-4o',
-    'gpt 4o': 'gpt-4o',
-    'gpt-4o mini': 'gpt-4o-mini',
-    'gpt 4o mini': 'gpt-4o-mini',
-    'gpt-4': 'gpt-4',
-    'gpt 4': 'gpt-4',
-    'gpt-3.5': 'gpt-3.5-turbo',
-    'gpt-3.5-turbo': 'gpt-3.5-turbo',
-    'o3-mini': 'o3-mini',
-    'o3 mini': 'o3-mini',
-    'o1': 'o1',
-    'o1-mini': 'o1-mini',
-    'o1 mini': 'o1-mini',
-  };
-
-  /**
-   * Attempts to auto-detect the current model from the ChatGPT UI.
-   * Tries multiple strategies: data attributes, UI elements, and page state.
-   */
-  function detectCurrentModel() {
-    // Strategy 1: Look for model name in common UI locations
-    const modelSelectors = [
-      // Model selector button/text in header
-      'button[data-testid="model-switcher"]',
-      'div[data-testid="model-switcher"]',
-      // Any element containing model name
-      '[data-model-label]',
-    ];
-
-    for (const selector of modelSelectors) {
-      const el = document.querySelector(selector);
-      if (el) {
-        const text = (el.textContent || el.getAttribute('data-model-label') || '').trim().toLowerCase();
-        if (text && MODEL_NAME_MAP[text]) {
-          return MODEL_NAME_MAP[text];
-        }
-      }
-    }
-
-    // Strategy 2: Scan all elements for model name indicators
-    const allText = document.body.textContent.toLowerCase();
-    for (const [uiName, modelKey] of Object.entries(MODEL_NAME_MAP)) {
-      // Look for "gpt-5.5", "gpt-4o", etc. in visible UI text
-      const regex = new RegExp('\\b' + uiName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-      if (regex.test(allText)) {
-        // Only match if it appears in a header/title-like element, not in conversation text
-        const headers = document.querySelectorAll('h1, h2, h3, header, [class*="model"], [class*="header"]');
-        for (const header of headers) {
-          if (regex.test(header.textContent)) {
-            return modelKey;
-          }
-        }
-      }
-    }
-
-    // Strategy 3: Check window __NEXT_DATA__ for model info (ChatGPT uses Next.js)
-    try {
-      const nextData = window.__NEXT_DATA__;
-      if (nextData && nextData.props) {
-        const json = JSON.stringify(nextData.props);
-        for (const [uiName, modelKey] of Object.entries(MODEL_NAME_MAP)) {
-          if (json.toLowerCase().includes(uiName.toLowerCase())) {
-            return modelKey;
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore errors reading __NEXT_DATA__
-    }
-
-    // Default fallback
-    return 'gpt-4o';
-  }
-
-  // --------------------------
-  // Caching for Analysis Results
-  // --------------------------
-
-  /**
-   * Simple cache to avoid re-analyzing identical text.
-   * Maps text content -> analysis result.
-   */
-  const analysisCache = new Map();
-  const MAX_CACHE_SIZE = 50;
-
-  /**
-   * Get a simple hash of a string for cache keys.
-   */
-  function simpleHash(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return String(hash);
-  }
-
-  /**
-   * Cached sentiment analysis.
-   */
-  function cachedAnalyzeSentiment(text) {
-    const key = 'sent:' + simpleHash(text);
-    if (analysisCache.has(key)) {
-      return analysisCache.get(key);
-    }
-    const result = window.analyzeSentiment(text);
-    if (analysisCache.size >= MAX_CACHE_SIZE) {
-      // Evict oldest entry
-      const oldestKey = analysisCache.keys().next().value;
-      analysisCache.delete(oldestKey);
-    }
-    analysisCache.set(key, result);
-    return result;
-  }
-
-  /**
-   * Cached topic extraction.
-   */
-  function cachedExtractTopics(text, maxTopics) {
-    const key = 'topic:' + maxTopics + ':' + simpleHash(text);
-    if (analysisCache.has(key)) {
-      return analysisCache.get(key);
-    }
-    const result = window.extractTopics(text, maxTopics);
-    if (analysisCache.size >= MAX_CACHE_SIZE) {
-      const oldestKey = analysisCache.keys().next().value;
-      analysisCache.delete(oldestKey);
-    }
-    analysisCache.set(key, result);
-    return result;
-  }
-
-  // --------------------------
-  // Floating Panel UI
-  // --------------------------
-
-  // Auto-detect model on load, allow manual override
-  let selectedModel = detectCurrentModel();
-  manualModelOverride = false;
-
-  // AIDR is only enabled on ChatGPT / OpenAI sites
   function isAidrEnabledHost() {
     const host = window.location.hostname;
     return host === 'chatgpt.com' || host === 'chat.openai.com' || host.endsWith('.chatgpt.com') || host.endsWith('.chat.openai.com');
@@ -360,104 +156,169 @@
   const aidrEngine = (isAidrEnabledHost() && window.AIDR && window.AIDR.createEngine)
     ? window.AIDR.createEngine()
     : null;
+
   if (isAidrEnabledHost() && window.AIDR && window.AIDR.policy && window.AIDR.policy.init) {
     window.AIDR.policy.init();
   }
+
   const sendRiskHistory = [];
   const cooldownByFingerprint = new Map();
 
-  let panelVisible = true;
+  // Tab Scan Telemetry
+  let promptsScannedCount = 0;
+  let attacksBlockedCount = 0;
+  let warningCount = 0;
+  let tabIncidents = [];
 
-  function togglePanelVisibility() {
-    const panel = document.getElementById('chatgpt-token-counter');
-    const toggleBtn = document.getElementById('ctc-toggle-btn');
-    if (!panel) return;
+  // --------------------------
+  // Collapsible Sidebar UI
+  // --------------------------
+  let sidebarState = 'collapsed'; // 'collapsed' or 'expanded'
 
-    panelVisible = !panelVisible;
-    panel.style.display = panelVisible ? 'block' : 'none';
+  async function initSidebarState() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['aidrSidebarState'], (res) => {
+        if (res.aidrSidebarState === 'expanded') {
+          expandSidebar();
+        } else {
+          collapseSidebar();
+        }
+      });
+    } else {
+      collapseSidebar();
+    }
+  }
 
-    // Show/hide the floating toggle button
-    if (toggleBtn) {
-      toggleBtn.style.display = panelVisible ? 'none' : 'flex';
+  function saveSidebarState(state) {
+    sidebarState = state;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ aidrSidebarState: state });
+    }
+  }
+
+  function expandSidebar() {
+    const sidebar = document.getElementById('aidr-sidebar');
+    if (!sidebar) return;
+    sidebar.classList.remove('aidr-collapsed');
+    sidebar.classList.add('aidr-expanded');
+    saveSidebarState('expanded');
+  }
+
+  function collapseSidebar() {
+    const sidebar = document.getElementById('aidr-sidebar');
+    if (!sidebar) return;
+    sidebar.classList.remove('aidr-expanded');
+    sidebar.classList.add('aidr-collapsed');
+    saveSidebarState('collapsed');
+  }
+
+  function toggleSidebar() {
+    if (sidebarState === 'collapsed') {
+      expandSidebar();
+    } else {
+      collapseSidebar();
     }
   }
 
   function createPanel() {
-    // Remove existing panel and toggle button if any
-    const existing = document.getElementById('chatgpt-token-counter');
+    // Clean up existing elements if any
+    const existing = document.getElementById('aidr-sidebar');
     if (existing) existing.remove();
-    const existingBtn = document.getElementById('ctc-toggle-btn');
-    if (existingBtn) existingBtn.remove();
 
-    const panel = document.createElement('div');
-    panel.id = 'chatgpt-token-counter';
+    const sidebar = document.createElement('div');
+    sidebar.id = 'aidr-sidebar';
+    sidebar.className = 'aidr-collapsed';
 
-    // Build model selector options
-    const modelOptions = Object.entries(window.MODEL_PRICING).map(([key, val]) => {
-      const selected = key === selectedModel ? ' selected' : '';
-      return `<option value="${key}"${selected}>${val.name}</option>`;
-    }).join('');
-
-    panel.innerHTML = `
-      <div class="ctc-title">
-        Token Counter
-        <button id="ctc-hide-btn" title="Hide panel">─</button>
+    sidebar.innerHTML = `
+      <!-- Collapsed Ribbon Handle -->
+      <div class="aidr-handle" id="aidr-handle">
+        <div class="aidr-handle-logo">
+          <img src="${chrome.runtime.getURL('icons/icon32.png')}" alt="AIDR" />
+        </div>
+        <div class="aidr-status-indicator pulse-green" id="aidr-status-indicator"></div>
+        <div class="aidr-handle-arrow">◀</div>
       </div>
-      <div class="ctc-model-select">
-        <label>Model:</label>
-        <select id="ctc-model">${modelOptions}</select>
-      </div>
-      <div>Prompt: <span id="ctc-prompt">0</span></div>
-      <div>User total: <span id="ctc-user">0</span></div>
-      <div>Assistant total: <span id="ctc-assistant">0</span></div>
-      <div>Total: <span id="ctc-total">0</span></div>
-      <div class="ctc-cost">Est. cost: <span id="ctc-cost">< $0.001</span></div>
-      <div class="ctc-sentiment">Last: <span id="ctc-last-sentiment">--</span></div>
-      <div class="ctc-sentiment">Overall: <span id="ctc-overall-sentiment">--</span></div>
-      <div class="ctc-topics">🔑 Last: <span id="ctc-last-topics">--</span></div>
-      <div class="ctc-topics">🔑 Overall: <span id="ctc-overall-topics">--</span></div>
-      <div>"paynet" mentions: <span id="ctc-paynet">0</span></div>
-      <div class="ctc-topics">AIDR mode: <span id="ctc-aidr-mode-state">enforcement</span></div>
-      <div class="ctc-topics">
-        <button id="ctc-aidr-mode-toggle" type="button">Toggle Mode</button>
-        <button id="ctc-aidr-pause-15" type="button">Pause</button>
-        <button id="ctc-aidr-resume" type="button">Resume</button>
+
+      <!-- Expanded Sidebar Content -->
+      <div class="aidr-sidebar-container">
+        <!-- Brand Header -->
+        <div class="aidr-header">
+          <div class="aidr-brand">
+            <img src="${chrome.runtime.getURL('icons/icon32.png')}" class="aidr-logo" />
+            <span class="aidr-title">AIDR Shield</span>
+          </div>
+          <button class="aidr-collapse-btn" id="aidr-collapse-btn">▶</button>
+        </div>
+
+        <!-- Protection State Status Card -->
+        <div class="status-card">
+          <div class="status-indicator-dot pulsing-blue" id="aidr-status-glow"></div>
+          <div class="status-meta">
+            <span class="status-label">PROTECTION STATE</span>
+            <span class="status-mode" id="ctc-aidr-mode-state">Loading...</span>
+          </div>
+        </div>
+
+        <!-- Telemetry Scan Metrics -->
+        <div class="aidr-section">
+          <h3 class="section-title">Telemetry & Scans</h3>
+          <div class="metric-row">
+            <span>Scanned Prompts</span>
+            <span class="metric-val" id="aidr-stat-scanned">0</span>
+          </div>
+          <div class="metric-row">
+            <span>Blocked Attacks</span>
+            <span class="metric-val text-red" id="aidr-stat-blocked">0</span>
+          </div>
+          <div class="metric-row">
+            <span>Triggered Warnings</span>
+            <span class="metric-val text-yellow" id="aidr-stat-warnings">0</span>
+          </div>
+          <div class="metric-divider"></div>
+          <div class="metric-row total-row">
+            <span>Tab Risk Level</span>
+            <span class="metric-val text-glow-safe" id="aidr-tab-risk">SAFE (0)</span>
+          </div>
+        </div>
+
+        <!-- Active Security Logs Feed -->
+        <div class="aidr-section flex-expand">
+          <h3 class="section-title">Active Incident Feed</h3>
+          <div class="incident-log-container" id="aidr-incidents-feed">
+            <div class="incident-empty-state">No security incidents detected.</div>
+          </div>
+        </div>
+
+        <!-- Policy Controls -->
+        <div class="aidr-section no-border">
+          <h3 class="section-title">Policy Enforcement</h3>
+          <div class="action-grid">
+            <button id="ctc-aidr-mode-toggle" class="aidr-btn secondary">Toggle Shield</button>
+            <button id="ctc-aidr-pause-15" class="aidr-btn warning">Pause 15m</button>
+            <button id="ctc-aidr-resume" class="aidr-btn primary">Resume</button>
+          </div>
+        </div>
       </div>
     `;
-    document.body.appendChild(panel);
 
-    // Create floating toggle button (shown when panel is hidden)
-    const toggleBtn = document.createElement('div');
-    toggleBtn.id = 'ctc-toggle-btn';
-    toggleBtn.title = 'Show Token Counter';
-    toggleBtn.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="white" stroke-width="1.5" fill="rgba(255,255,255,0.05)"/><text x="12" y="16" text-anchor="middle" fill="white" font-size="12" font-weight="700" font-family="system-ui, sans-serif">T</text></svg>`;
-    toggleBtn.style.display = 'none';
-    document.body.appendChild(toggleBtn);
+    document.body.appendChild(sidebar);
 
-    // Hide button click
-    const hideBtn = document.getElementById('ctc-hide-btn');
-    hideBtn.addEventListener('click', (e) => {
+    // Click event on collapsed handle to expand
+    document.getElementById('aidr-handle').addEventListener('click', (e) => {
       e.stopPropagation();
-      togglePanelVisibility();
+      expandSidebar();
     });
 
-    // Toggle button click
-    toggleBtn.addEventListener('click', () => {
-      togglePanelVisibility();
+    // Click event on close button to collapse
+    document.getElementById('aidr-collapse-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      collapseSidebar();
     });
 
-    // Set dropdown to detected model
-    const modelSelect = document.getElementById('ctc-model');
-    modelSelect.value = selectedModel;
-
-    // Listen for manual model changes
-    modelSelect.addEventListener('change', (e) => {
-      selectedModel = e.target.value;
-      manualModelOverride = true;
-      updatePanel();
-    });
-
+    // Interactive Button Listeners
     const modeStateEl = document.getElementById('ctc-aidr-mode-state');
+    const statusGlowEl = document.getElementById('aidr-status-glow');
+    const statusIndicatorEl = document.getElementById('aidr-status-indicator');
     const modeToggleBtn = document.getElementById('ctc-aidr-mode-toggle');
     const pauseBtn = document.getElementById('ctc-aidr-pause-15');
     const resumeBtn = document.getElementById('ctc-aidr-resume');
@@ -466,19 +327,32 @@
       if (!window.AIDR || !window.AIDR.policy || !modeStateEl) return;
       await window.AIDR.policy.init();
       const st = window.AIDR.policy.getStateSync();
-      modeStateEl.textContent = st.mode + (window.AIDR.policy.isSessionPaused() ? ' (paused)' : '');
-    }
+      const isPaused = window.AIDR.policy.isSessionPaused();
+      
+      modeStateEl.textContent = st.mode + (isPaused ? ' (paused)' : '');
 
-    function downloadTextFile(filename, text, mime) {
-      const blob = new Blob([text], { type: mime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      if (isPaused) {
+        modeStateEl.style.color = 'var(--aidr-warning)';
+        if (statusGlowEl) statusGlowEl.style.background = 'var(--aidr-warning)';
+        if (statusIndicatorEl) {
+          statusIndicatorEl.className = 'aidr-status-indicator pulse-yellow';
+        }
+      } else if (st.mode === 'enforcement') {
+        modeStateEl.style.color = '#fff';
+        if (statusGlowEl) statusGlowEl.style.background = 'var(--aidr-accent)';
+        if (statusIndicatorEl) {
+          statusIndicatorEl.className = 'aidr-status-indicator pulse-green';
+        }
+      } else {
+        // Shadow mode
+        modeStateEl.style.color = 'var(--aidr-muted)';
+        if (statusGlowEl) statusGlowEl.style.background = 'var(--aidr-muted)';
+        if (statusIndicatorEl) {
+          statusIndicatorEl.className = 'aidr-status-indicator';
+          statusIndicatorEl.style.background = 'var(--aidr-muted)';
+          statusIndicatorEl.style.boxShadow = 'none';
+        }
+      }
     }
 
     if (modeToggleBtn) {
@@ -489,6 +363,7 @@
         await refreshPolicyState();
       });
     }
+
     if (pauseBtn) {
       pauseBtn.addEventListener('click', async () => {
         if (!window.AIDR || !window.AIDR.policy) return;
@@ -496,6 +371,7 @@
         await refreshPolicyState();
       });
     }
+
     if (resumeBtn) {
       resumeBtn.addEventListener('click', async () => {
         if (!window.AIDR || !window.AIDR.policy) return;
@@ -503,7 +379,9 @@
         await refreshPolicyState();
       });
     }
+
     refreshPolicyState();
+    initSidebarState();
   }
 
   function isPromptElement(el) {
@@ -512,9 +390,7 @@
       try {
         if (el.matches && el.matches(selector)) return true;
         if (el.closest && el.closest(selector)) return true;
-      } catch (_) {
-        // Ignore selector errors.
-      }
+      } catch (_) {}
     }
     return false;
   }
@@ -524,9 +400,7 @@
     for (const selector of ACTIVE_PROFILE.composerContextSelectors.concat(ACTIVE_PROFILE.formSelectors)) {
       try {
         if (el.closest(selector)) return true;
-      } catch (_) {
-        // Ignore selector errors.
-      }
+      } catch (_) {}
     }
     return false;
   }
@@ -570,11 +444,44 @@
     });
   }
 
+  // Registers security incidents into our UI list
+  function logIncidentToFeed(severity, detections) {
+    if (!detections || !detections.length) return;
+    
+    const feed = document.getElementById('aidr-incidents-feed');
+    if (!feed) return;
+
+    // Remove empty state placeholder
+    const emptyState = feed.querySelector('.incident-empty-state');
+    if (emptyState) emptyState.remove();
+
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    detections.forEach((d) => {
+      const item = document.createElement('div');
+      const isWarning = severity === 'low' || severity === 'medium';
+      item.className = `incident-item${isWarning ? ' warning' : ''}`;
+
+      item.innerHTML = `
+        <div class="incident-header">
+          <span class="incident-cat">${d.category || 'General threat'}</span>
+          <span class="incident-time">${timestamp}</span>
+        </div>
+        <div class="incident-detail">${d.message || 'Triggered policy warning.'}</div>
+      `;
+
+      // Prepend to top of feed
+      feed.insertBefore(item, feed.firstChild);
+      tabIncidents.push({ time: timestamp, category: d.category, message: d.message, severity });
+    });
+  }
+
   function maybeBlockPromptSend(form) {
     const promptText = getInputText(form);
     const fp = promptFingerprint(promptText);
     if (!fp) return false;
 
+    promptsScannedCount++;
     const result = evaluatePromptForEnforcement(promptText);
     sendRiskHistory.push({ ts: Date.now(), severity: result.severity, risk: result.risk });
     if (sendRiskHistory.length > 50) sendRiskHistory.shift();
@@ -585,11 +492,23 @@
       detections: result.detections,
       _promptText: promptText
     };
-    // Store for upgradeToBanner() to access
+    
     window._aidrLastResult = renderPayload;
     if (window.AIDR && window.AIDR.responder) {
       window.AIDR.responder.render(renderPayload);
     }
+
+    // Log warning or block to sidebar
+    if (result.severity !== 'safe') {
+      if (result.severity === 'high' || result.severity === 'critical') {
+        attacksBlockedCount++;
+      } else {
+        warningCount++;
+      }
+      logIncidentToFeed(result.severity, result.detections);
+    }
+
+    updatePanelValues(result.severity, result.risk);
 
     const hasHardBlockCategory = result.detections.some((d) =>
       d && (d.category === 'prompt_injection' || d.category === 'jailbreak')
@@ -634,22 +553,27 @@
     script.remove();
   }
 
-  // Keyboard shortcut: Ctrl+Shift+T to toggle panel
   if (isAidrEnabledHost()) installTransportGuard();
 
   window.addEventListener('aidr:transport-blocked', () => {
+    attacksBlockedCount++;
+    const blockDetections = [{
+      id: 'transport_pi_block',
+      category: 'prompt_injection',
+      message: 'Blocked prompt injection attempt at network transport layer.'
+    }];
+    logIncidentToFeed('critical', blockDetections);
+    updatePanelValues('critical', 100);
+
     handleBlockedPrompt({
       severity: 'critical',
       risk: 100,
       confidence: 1,
-      detections: [{
-        id: 'transport_pi_block',
-        category: 'prompt_injection',
-        message: 'Blocked at transport layer.'
-      }]
+      detections: blockDetections
     });
   }, true);
 
+  // pre-send keyboard submission intercept
   window.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (e.isComposing) return;
@@ -670,6 +594,7 @@
     }
   }, true);
 
+  // click submit button intercept
   window.addEventListener('click', (e) => {
     if (e.defaultPrevented) return;
     let button = null;
@@ -678,9 +603,7 @@
         try {
           button = e.target.closest(selector);
           if (button) break;
-        } catch (_) {
-          // Ignore selector errors.
-        }
+        } catch (_) {}
       }
     }
     if (!button) return;
@@ -696,9 +619,10 @@
     }
   }, true);
 
+  // standard form submit event intercept
   window.addEventListener('submit', (e) => {
     const form = e.target;
-    if (!form || !form.matches || !form.matches('form[data-type=\"unified-composer\"]')) return;
+    if (!form || !form.matches || !form.matches('form[data-type="unified-composer"]')) return;
     const enforcementResult = maybeBlockPromptSend(form);
     if (enforcementResult && enforcementResult.severity) {
       e.preventDefault();
@@ -708,155 +632,94 @@
     }
   }, true);
 
+  // Keyboard shortcut Ctrl+Shift+T to toggle expanding sidebar
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'T') {
       e.preventDefault();
-      togglePanelVisibility();
+      toggleSidebar();
     }
   });
 
-  function updatePanel() {
-    const promptText = getInputText();
-    const promptTokens = window.estimateTokens(promptText);
-    const totals = calculateTotals();
+  // Updates the counters and safety levels shown in the expanded sidebar
+  function updatePanelValues(maxSeverity, maxRisk) {
+    const scannedEl = document.getElementById('aidr-stat-scanned');
+    const blockedEl = document.getElementById('aidr-stat-blocked');
+    const warningsEl = document.getElementById('aidr-stat-warnings');
+    const riskEl = document.getElementById('aidr-tab-risk');
 
-    // Fetch messages once and reuse for all analyses
-    const messages = getConversationMessages();
-    const lastMsg = messages.length ? messages[messages.length - 1].text : '';
-    const lastRole = messages.length ? messages[messages.length - 1].role : '';
-    const fullText = messages.map(m => m.text).join(' ');
+    if (scannedEl) scannedEl.textContent = promptsScannedCount;
+    if (blockedEl) blockedEl.textContent = attacksBlockedCount;
+    if (warningsEl) warningsEl.textContent = warningCount;
 
-    if (aidrEngine) {
-      aidrEngine.analyzePrompt(promptText);
-      if (lastRole === 'assistant') {
-        aidrEngine.analyzeResponse(lastMsg);
+    if (riskEl) {
+      let sev = (maxSeverity || 'SAFE').toUpperCase();
+      let r = maxRisk || 0;
+
+      riskEl.textContent = `${sev} (${r})`;
+
+      if (sev === 'SAFE') {
+        riskEl.className = 'metric-val text-glow-safe';
+      } else if (sev === 'LOW' || sev === 'MEDIUM') {
+        riskEl.className = 'metric-val text-glow-warning';
+      } else {
+        riskEl.className = 'metric-val text-glow-danger';
       }
-    }
-
-    const promptEl = document.getElementById('ctc-prompt');
-    const userEl = document.getElementById('ctc-user');
-    const assistantEl = document.getElementById('ctc-assistant');
-    const totalEl = document.getElementById('ctc-total');
-
-    if (promptEl) promptEl.textContent = promptTokens;
-    if (userEl) userEl.textContent = totals.userTokens;
-    if (assistantEl) assistantEl.textContent = totals.assistantTokens;
-    if (totalEl) totalEl.textContent = totals.totalTokens;
-
-    // Calculate and display estimated cost
-    const costEl = document.getElementById('ctc-cost');
-    if (costEl) {
-      const inputTokens = promptTokens + totals.userTokens;
-      const outputTokens = totals.assistantTokens;
-      const cost = window.calculateCost(inputTokens, outputTokens, selectedModel);
-      costEl.textContent = window.formatCost(cost);
-    }
-
-    const paynetEl = document.getElementById('ctc-paynet');
-    if (paynetEl) paynetEl.textContent = totals.paynetCount;
-
-    // Sentiment: last message (cached)
-    const lastSentEl = document.getElementById('ctc-last-sentiment');
-    if (lastSentEl) {
-      const lastResult = cachedAnalyzeSentiment(lastMsg);
-      lastSentEl.textContent = sentimentEmoji(lastResult.label) + ' ' + lastResult.label;
-      lastSentEl.className = 'ctc-sentiment-value ctc-sentiment-' + lastResult.label.toLowerCase();
-    }
-
-    // Sentiment: overall conversation (cached)
-    const overallSentEl = document.getElementById('ctc-overall-sentiment');
-    if (overallSentEl) {
-      const overallResult = cachedAnalyzeSentiment(fullText);
-      overallSentEl.textContent = sentimentEmoji(overallResult.label) + ' ' + overallResult.label;
-      overallSentEl.className = 'ctc-sentiment-value ctc-sentiment-' + overallResult.label.toLowerCase();
-    }
-
-    // Topics: last message (cached)
-    const lastTopicsEl = document.getElementById('ctc-last-topics');
-    if (lastTopicsEl) {
-      const lastTopics = cachedExtractTopics(lastMsg, 4);
-      lastTopicsEl.textContent = lastTopics.length ? lastTopics.join(', ') : '--';
-    }
-
-    // Topics: overall conversation (cached)
-    const overallTopicsEl = document.getElementById('ctc-overall-topics');
-    if (overallTopicsEl) {
-      const overallTopics = cachedExtractTopics(fullText, 5);
-      overallTopicsEl.textContent = overallTopics.length ? overallTopics.join(', ') : '--';
     }
   }
 
-  function sentimentEmoji(label) {
-    if (label === 'Positive') return '\u{1F60A}';  // 😊
-    if (label === 'Negative') return '\u{1F61E}';  // 😞
-    return '\u{1F610}';  // 😐
+  function updatePanel() {
+    const promptText = getInputText();
+    if (promptText && aidrEngine) {
+      aidrEngine.analyzePrompt(promptText);
+    }
+    updatePanelValues('safe', 0);
   }
 
   // --------------------------
   // DOM Observation
   // --------------------------
-
   function startObserver() {
     let debounceTimer;
     let typingIdleTimer;
 
     const observer = new MutationObserver(() => {
-      // Debounce updates to avoid excessive recalculations
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(updatePanel, 300);
 
-      // Reset typing idle timer
       clearTimeout(typingIdleTimer);
       typingIdleTimer = setTimeout(() => {
-        // User has stopped typing for 2s — upgrade inline indicator to banner
-        if (window.AIDR && window.AIDR.responder && window.AIDR.responder.upgradeToBanner) {
-          window.AIDR.responder.upgradeToBanner();
+        const text = getInputText();
+        if (text && isAidrEnabledHost() && window.AIDR && window.AIDR.detect) {
+          const detections = window.AIDR.detect(text);
+          if (detections && detections.length) {
+            const hasCritical = detections.some(d => d.category === 'prompt_injection' || d.category === 'jailbreak');
+            const sev = hasCritical ? 'critical' : 'medium';
+            // Non-blocking real-time warning logging
+            if (promptsScannedCount === 0 || tabIncidents.length === 0) {
+              logIncidentToFeed(sev, detections);
+              warningCount++;
+              updatePanelValues(sev, hasCritical ? 85 : 45);
+            }
+          }
         }
-      }, 2000);
+      }, 1500);
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true,
+      characterData: true
     });
-
-    // Also listen for input events on the prompt area
-    document.addEventListener('input', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(updatePanel, 150);
-
-      // Reset typing idle timer
-      clearTimeout(typingIdleTimer);
-      typingIdleTimer = setTimeout(() => {
-        if (window.AIDR && window.AIDR.responder && window.AIDR.responder.upgradeToBanner) {
-          window.AIDR.responder.upgradeToBanner();
-        }
-      }, 2000);
-    }, true);
-
-    // Periodic check in case mutations are missed
-    setInterval(updatePanel, 5000);
   }
 
-  // --------------------------
-  // Initialize
-  // --------------------------
-
-  createPanel();
-  updatePanel();
-  startObserver();
-
-  // Periodically re-detect model if not manually overridden
-  setInterval(() => {
-    if (!manualModelOverride) {
-      const detected = detectCurrentModel();
-      if (detected !== selectedModel) {
-        selectedModel = detected;
-        const modelSelect = document.getElementById('ctc-model');
-        if (modelSelect) modelSelect.value = selectedModel;
-        updatePanel();
-      }
-    }
-  }, 10000);
+  // Initialize UI Elements
+  if (document.body) {
+    createPanel();
+    startObserver();
+  } else {
+    window.addEventListener('DOMContentLoaded', () => {
+      createPanel();
+      startObserver();
+    });
+  }
 })();
