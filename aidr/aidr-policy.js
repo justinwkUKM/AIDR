@@ -67,14 +67,12 @@
   }
 
   function isPatternAllowlisted(text) {
-    const input = String(text || '');
+    const input = String(text || '').toLowerCase();
     return state.allowlistPatterns.some((p) => {
       if (!p) return false;
-      try {
-        return new RegExp(p, 'i').test(input);
-      } catch (_) {
-        return input.toLowerCase().includes(String(p).toLowerCase());
-      }
+      const pattern = String(p).toLowerCase();
+      // Literal substring match — no regex, no special characters
+      return input.includes(pattern);
     });
   }
 

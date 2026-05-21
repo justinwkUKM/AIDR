@@ -349,11 +349,18 @@
 
   // Auto-detect model on load, allow manual override
   let selectedModel = detectCurrentModel();
-  let manualModelOverride = false;
-  const aidrEngine = window.AIDR && window.AIDR.createEngine
+  manualModelOverride = false;
+
+  // AIDR is only enabled on ChatGPT / OpenAI sites
+  function isAidrEnabledHost() {
+    const host = window.location.hostname;
+    return host === 'chatgpt.com' || host === 'chat.openai.com' || host.endsWith('.chatgpt.com') || host.endsWith('.chat.openai.com');
+  }
+
+  const aidrEngine = (isAidrEnabledHost() && window.AIDR && window.AIDR.createEngine)
     ? window.AIDR.createEngine()
     : null;
-  if (window.AIDR && window.AIDR.policy && window.AIDR.policy.init) {
+  if (isAidrEnabledHost() && window.AIDR && window.AIDR.policy && window.AIDR.policy.init) {
     window.AIDR.policy.init();
   }
   const sendRiskHistory = [];
@@ -534,6 +541,7 @@
   }
 
   function evaluatePromptForEnforcement(text) {
+    if (!isAidrEnabledHost()) return { severity: 'safe', risk: 0, detections: [] };
     if (!window.AIDR || !window.AIDR.detect || !window.AIDR.score) {
       return { severity: 'safe', risk: 0, detections: [] };
     }
@@ -571,12 +579,16 @@
     sendRiskHistory.push({ ts: Date.now(), severity: result.severity, risk: result.risk });
     if (sendRiskHistory.length > 50) sendRiskHistory.shift();
 
+    const renderPayload = {
+      severity: result.severity,
+      risk: result.risk,
+      detections: result.detections,
+      _promptText: promptText
+    };
+    // Store for upgradeToBanner() to access
+    window._aidrLastResult = renderPayload;
     if (window.AIDR && window.AIDR.responder) {
-      window.AIDR.responder.render({
-        severity: result.severity,
-        risk: result.risk,
-        detections: result.detections
-      });
+      window.AIDR.responder.render(renderPayload);
     }
 
     const hasHardBlockCategory = result.detections.some((d) =>
@@ -610,6 +622,7 @@
   }
 
   function installTransportGuard() {
+    if (!isAidrEnabledHost()) return;
     if (window.__aidrTransportGuardInstalled) return;
     window.__aidrTransportGuardInstalled = true;
 
@@ -622,7 +635,7 @@
   }
 
   // Keyboard shortcut: Ctrl+Shift+T to toggle panel
-  installTransportGuard();
+  if (isAidrEnabledHost()) installTransportGuard();
 
   window.addEventListener('aidr:transport-blocked', () => {
     handleBlockedPrompt({
@@ -785,11 +798,21 @@
 
   function startObserver() {
     let debounceTimer;
+    let typingIdleTimer;
 
     const observer = new MutationObserver(() => {
       // Debounce updates to avoid excessive recalculations
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(updatePanel, 300);
+
+      // Reset typing idle timer
+      clearTimeout(typingIdleTimer);
+      typingIdleTimer = setTimeout(() => {
+        // User has stopped typing for 2s — upgrade inline indicator to banner
+        if (window.AIDR && window.AIDR.responder && window.AIDR.responder.upgradeToBanner) {
+          window.AIDR.responder.upgradeToBanner();
+        }
+      }, 2000);
     });
 
     observer.observe(document.body, {
@@ -802,6 +825,14 @@
     document.addEventListener('input', () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(updatePanel, 150);
+
+      // Reset typing idle timer
+      clearTimeout(typingIdleTimer);
+      typingIdleTimer = setTimeout(() => {
+        if (window.AIDR && window.AIDR.responder && window.AIDR.responder.upgradeToBanner) {
+          window.AIDR.responder.upgradeToBanner();
+        }
+      }, 2000);
     }, true);
 
     // Periodic check in case mutations are missed

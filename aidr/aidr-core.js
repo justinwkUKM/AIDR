@@ -22,7 +22,7 @@
   function createEngine() {
     const recentHistory = [];
     const recentFingerprints = new Map();
-    const dedupeTtlMs = 1200;
+    const dedupeTtlMs = 3000;
     const perf = {
       samples: 0,
       totalMs: 0,
